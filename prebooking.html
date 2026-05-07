@@ -1,0 +1,1634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Zillow Prebooking Integration Metrics</title>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo:    #6366f1; --indigo-bg: #eef2ff;
+      --sky:       #0ea5e9; --sky-bg:    #e0f2fe;
+      --green:     #10b981; --green-bg:  #d1fae5;
+      --teal:      #059669; --teal-bg:   #ccfbf1;
+      --amber:     #f59e0b; --amber-bg:  #fef3c7;
+      --red:       #ef4444; --red-bg:    #fee2e2;
+      --g100: #f4f6f9; --g200: #e5e7eb; --g300: #d1d5db;
+      --g400: #9ca3af; --g500: #6b7280; --g700: #374151;
+      --g900: #111827; --navy: #0f3460;
+      --card-r: 12px;
+      --shadow: 0 1px 4px rgba(0,0,0,.07);
+      --shadow-hover: 0 8px 24px rgba(0,0,0,.12);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--g100);
+      color: var(--g900);
+      min-height: 100vh;
+    }
+
+    /* ── Header ───────────────────────────────────────────── */
+    .header {
+      background: #fff;
+      border-bottom: 1px solid var(--g200);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-icon {
+      width: 34px; height: 34px; border-radius: 8px;
+      background: var(--indigo);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-icon svg { width: 18px; height: 18px; }
+    h1 { font-size: 1.05rem; font-weight: 800; color: var(--navy); }
+    .header-sub { font-size: 0.7rem; color: var(--g400); margin-top: 1px; }
+    .header-sub code {
+      background: var(--g200); border-radius: 4px;
+      padding: 1px 5px; font-size: 0.68rem; color: var(--g500);
+    }
+
+    /* ── Tabs ─────────────────────────────────────────────── */
+    .cohort-tabs {
+      display: flex;
+      background: var(--g100);
+      border: 1.5px solid var(--g200);
+      border-radius: 10px;
+      overflow: hidden;
+      padding: 3px;
+      gap: 3px;
+    }
+    .cohort-tab {
+      padding: 6px 20px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--g500);
+      border-radius: 7px;
+      transition: all 0.18s;
+      letter-spacing: 0.01em;
+    }
+    .cohort-tab.active { background: #fff; color: var(--indigo); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .cohort-tab:hover:not(.active) { color: var(--g700); background: rgba(255,255,255,.5); }
+
+    /* ── Main layout ──────────────────────────────────────── */
+    .main {
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    @media (max-width: 600px) { .main { padding: 12px; } }
+
+    /* ── Section label ────────────────────────────────────── */
+    .section-label {
+      font-size: 0.62rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--g400);
+      margin-bottom: 10px;
+    }
+
+    /* ── Shared card base ─────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: var(--card-r);
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.2s, transform 0.2s;
+      cursor: default;
+      overflow: hidden;
+    }
+    .card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+
+    /* ── Card grid ─────────────────────────────────────────── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 1100px) { .card-grid { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 700px)  { .card-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 420px)  { .card-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .rate-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 500px)  { .rate-grid { grid-template-columns: repeat(2, 1fr); } }
+    .card-grid.animating { opacity: 0; transform: translateY(6px); transition: none; }
+    .card-grid.visible   { opacity: 1; transform: translateY(0);   transition: opacity .2s, transform .2s; }
+    .rate-grid.animating { opacity: 0; transform: translateY(6px); transition: none; }
+    .rate-grid.visible   { opacity: 1; transform: translateY(0);   transition: opacity .2s, transform .2s; }
+
+    /* ── Count card ───────────────────────────────────────── */
+    .count-card {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      aspect-ratio: 5 / 3;
+      justify-content: space-between;
+    }
+    .count-card .cc-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .count-card .cc-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--g400);
+      line-height: 1.3;
+      max-width: 75%;
+    }
+    .count-card .cc-dot {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 12px;
+    }
+    .count-card .cc-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--navy);
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .count-card .cc-sub {
+      font-size: 0.72rem;
+      color: var(--g400);
+      min-height: 1em;
+    }
+    .bar-track { height: 3px; background: var(--g200); border-radius: 99px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 99px; transition: width .5s ease; }
+
+    /* count card accent colours */
+    .cc-created   .cc-dot { background: var(--indigo-bg); color: var(--indigo); }
+    .cc-users     .cc-dot { background: var(--sky-bg);    color: var(--sky); }
+    .cc-new-users .cc-dot { background: #ede9fe;          color: #7c3aed; }
+    .cc-scheduled .cc-dot { background: var(--green-bg);  color: var(--green); }
+    .cc-completed .cc-dot { background: var(--teal-bg);   color: var(--teal); }
+    .cc-cancelled .cc-dot { background: var(--amber-bg);  color: var(--amber); }
+    .cc-discarded .cc-dot { background: var(--red-bg);    color: var(--red); }
+
+    /* ── Rate card ────────────────────────────────────────── */
+    .rate-card {
+      padding: 16px 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .rate-card .rc-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .rate-card .rc-label {
+      font-size: 0.63rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--g400);
+      line-height: 1.35;
+      max-width: 72%;
+    }
+    .rate-card .rc-badge {
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 99px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .rate-card .rc-value {
+      font-size: 1.9rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .rate-card .rc-sub {
+      font-size: 0.63rem;
+      color: var(--g400);
+      line-height: 1.4;
+    }
+    .rate-card .rc-count {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--g500);
+    }
+
+    /* rate card accent colours */
+    .rc-sched  { border-top: 3px solid var(--green);  }
+    .rc-sched  .rc-value { color: var(--green); }
+    .rc-compc  { border-top: 3px solid var(--teal);   }
+    .rc-compc  .rc-value { color: var(--teal); }
+    .rc-comps  { border-top: 3px solid var(--sky);    }
+    .rc-comps  .rc-value { color: var(--sky); }
+    .rc-canc   { border-top: 3px solid var(--amber);  }
+    .rc-canc   .rc-value { color: var(--amber); }
+    .rc-disc   { border-top: 3px solid var(--red);    }
+    .rc-disc   .rc-value { color: var(--red); }
+    .rc-ppl    { border-top: 3px solid #8b5cf6; }
+    .rc-ppl    .rc-value { color: #8b5cf6; }
+
+    /* ── Delta badge ──────────────────────────────────────── */
+    .delta-up  { background: #dcfce7; color: #15803d; }
+    .delta-dn  { background: #fee2e2; color: #b91c1c; }
+    .delta-neu { background: #f3f4f6; color: var(--g500); }
+
+    /* ── Funnel card ──────────────────────────────────────── */
+    .funnel-card {
+      background: #fff;
+      border-radius: var(--card-r);
+      box-shadow: var(--shadow);
+      padding: 20px 20px 16px;
+    }
+    .funnel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .funnel-title { font-size: 0.88rem; font-weight: 700; color: var(--g700); }
+    .funnel-legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--g200);
+      justify-content: center;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--g500); font-weight: 600; }
+    .legend-dot  { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+    /* ── Two-column bottom row ──────────────────────────────── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+    /* ── Source chart card ───────────────────────────────── */
+    .source-card {
+      background: #fff;
+      border-radius: var(--card-r);
+      box-shadow: var(--shadow);
+      padding: 20px 20px 16px;
+    }
+    .source-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .source-title { font-size: 0.88rem; font-weight: 700; color: var(--g700); }
+    .source-legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Tags ─────────────────────────────────────────────── */
+    .tag { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 0.7rem; font-weight: 700; }
+    .tag-d1         { background: #ede9fe; color: #7c3aed; }
+    .tag-d2         { background: #ffedd5; color: #c2410c; }
+    .tag-cumulative { background: #fce7f3; color: #9d174d; }
+    .tag-d7         { background: #dbeafe; color: #1d4ed8; }
+    .tag-d30        { background: #d1fae5; color: #065f46; }
+
+    /* ── Divider ──────────────────────────────────────────── */
+    .section-divider { margin: 16px 0 14px; border: none; border-top: 1px solid var(--g200); }
+
+    /* ── Trend filter bar ───────────────────────────────── */
+          display: flex; align-items: center; gap: 10px;
+      background: #fff; border-radius: 14px;
+      box-shadow: var(--shadow); padding: 10px 16px;
+      margin-bottom: 20px; flex-wrap: wrap;
+    }
+          font-size: 0.7rem; font-weight: 700; color: var(--g400);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin-right: 2px; white-space: nowrap;
+    }
+              border: 1.5px solid var(--g200); background: var(--g100);
+      border-radius: 20px; padding: 5px 13px;
+      font-size: 0.75rem; font-weight: 600; color: var(--g500);
+      cursor: pointer; transition: all .15s; white-space: nowrap;
+      font-family: inherit;
+    }
+              background: var(--indigo); border-color: var(--indigo);
+      color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,.35);
+    }
+              display: flex; align-items: center; gap: 7px;
+      border-top: 1px solid var(--g100); padding-top: 8px;
+      margin-top: 4px; width: 100%;
+    }
+              border: 1.5px solid var(--g200); border-radius: 8px;
+      background: var(--g100); padding: 4px 8px;
+      font-size: 0.78rem; font-weight: 600; color: var(--g700);
+      cursor: pointer; outline: none; font-family: inherit;
+    }
+        
+    /* ── Trend charts ────────────────────────────────────── */
+          background: #fff; border-radius: var(--card-r);
+      box-shadow: var(--shadow); padding: 18px 20px 14px;
+    }
+            
+    /* ── Bar tooltip ─────────────────────────────────────── */
+    #bar-tooltip {
+      position: fixed; pointer-events: none;
+      background: rgba(17,24,39,.92); color: #fff;
+      border-radius: 8px; padding: 7px 11px;
+      font-size: 0.78rem; font-weight: 600; line-height: 1.5;
+      box-shadow: 0 4px 16px rgba(0,0,0,.22);
+      white-space: nowrap; z-index: 9999;
+      opacity: 0; transition: opacity .12s;
+    }
+    #bar-tooltip.visible { opacity: 1; }
+    #bar-tooltip .tt-day { font-size: 0.68rem; color: #9ca3af; margin-bottom: 3px; }
+    #bar-tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+    #bar-tooltip .tt-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+  <div id="bar-tooltip"></div>
+
+  <!-- no full-page overlay: data loads on demand via the Sync button -->
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <div class="header">
+    <div class="header-left">
+      <div class="header-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-6"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Zillow Prebooking Integration Metrics</h1>
+        
+      </div>
+      <span id="active-badge" class="tag tag-d1">Per Day</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="cohort-tabs">
+        <button class="cohort-tab active" onclick="showCohort('perday',this)">Per Day</button>
+        <button class="cohort-tab"        onclick="showCohort('cumulative',this)">Cumulative</button>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <button id="sync-btn" onclick="loadFromSheets()" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:700;transition:opacity 0.2s">
+          <span id="sync-spinner" style="display:none;width:14px;height:14px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite"></span>
+          <span id="sync-label">⟳ Sync Data</span>
+        </button>
+        <span id="last-updated" style="font-size:0.68rem;color:#9ca3af"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main ─────────────────────────────────────────── -->
+  <!-- Floating chart tooltip -->
+  <div id="chart-tip" style="position:fixed;display:none;pointer-events:none;background:rgba(17,24,39,0.92);color:#fff;border-radius:8px;padding:8px 12px;font-size:0.72rem;line-height:1.6;white-space:nowrap;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.25)"></div>
+
+  <div class="main">
+
+    <!-- Cohort rows (Day 1 / Day 7 / Day 30) -->
+    <div id="cohort-rows">
+
+      <!-- Day selector (visible only on Per Day tab) -->
+      <div id="perday-selector-bar" style="display:none;margin-bottom:18px;padding:14px 20px;background:#f8fafc;border:1.5px solid #e5e7eb;border-radius:10px;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="font-size:0.78rem;font-weight:700;color:#374151;white-space:nowrap">Select Day</span>
+        <select id="perday-select" onchange="onPerDaySelect(this.value)"
+                style="padding:6px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:0.82rem;font-weight:600;color:#374151;background:#fff;cursor:pointer;accent-color:#6366f1">
+          <option value="">— sync to load —</option>
+        </select>
+        <span id="perday-label" style="font-size:0.78rem;color:#9ca3af">Data for the selected day</span>
+      </div>
+
+      <!-- Cumulative day slider (only visible on Cumulative tab) -->
+      <div id="cum-slider-bar" style="display:none;margin-bottom:18px;padding:14px 20px;background:#f8fafc;border:1.5px solid #e5e7eb;border-radius:10px;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="font-size:0.78rem;font-weight:700;color:#374151;white-space:nowrap">Day 1 →</span>
+        <input type="range" id="cum-day-slider" min="1" max="1" value="1"
+               style="flex:1;min-width:120px;max-width:380px;accent-color:#6366f1"
+               oninput="onCumSlider(this.value)">
+        <span id="cum-day-label" style="font-size:0.88rem;font-weight:700;color:#6366f1;min-width:50px">Day 1</span>
+        <span style="font-size:0.72rem;color:#9ca3af">Cumulative totals from Day 1 through selected day</span>
+      </div>
+
+      <!-- Row 1: Counts -->
+      <div>
+        <p class="section-label">Counts</p>
+        <div class="card-grid visible" id="kpi-grid"></div>
+      </div>
+
+      <!-- Row 2: Funnel -->
+      <div style="margin-top:20px">
+        <p class="section-label">Conversion Funnel</p>
+        <div class="funnel-card">
+          <div class="funnel-header">
+            <span class="funnel-title">Prebooked → Scheduled → Completed</span>
+            <span id="funnel-tag" class="tag tag-d1">Day 1</span>
+          </div>
+          <div id="funnel-single"></div>
+          <div class="funnel-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>Prebooked</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div>Scheduled</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Cancelled</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Discarded</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#059669"></div>Completed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Scheduled Sources + Conversion Rates -->
+      <div class="two-col" style="margin-top:20px">
+        <div>
+          <p class="section-label">Scheduled Sources</p>
+          <div class="source-card">
+            <div class="source-header">
+              <span class="source-title">Redirection / Webhook / Direct (Rently) — Scheduled Prebookings</span>
+              <div class="source-legend">
+                <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>Redirection</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9"></div>Webhook</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div>Direct (Rently)</div>
+              </div>
+            </div>
+            <div id="source-chart"></div>
+          </div>
+        </div>
+        <div>
+          <p class="section-label">Conversion Rates</p>
+          <div class="rate-grid visible" id="rate-grid"></div>
+        </div>
+      </div>
+
+    </div><!-- #cohort-rows -->
+
+    <!-- ── Cumulative extra charts (visible only on Cumulative tab) ── -->
+    <div id="cum-charts" style="display:none;flex-direction:column;gap:16px;margin-top:20px">
+
+      <!-- 2×2 chart grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+        <!-- Chart 1: Daily Activity Bars -->
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Daily Activity</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — raw cumulative values per day</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#6366f1;display:inline-block"></span>Created</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#0891b2;display:inline-block"></span>Tour Started</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#059669;display:inline-block"></span>Completed</span>
+          </div>
+          <div id="cum-daily-activity"></div>
+        </div>
+
+        <!-- Chart 2: Cumulative Build-up -->
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Cumulative Build-up</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: cumulative sheet — running totals</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#6366f1;display:inline-block"></span>Created</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#059669;display:inline-block"></span>Completed</span>
+          </div>
+          <div id="cum-buildup"></div>
+        </div>
+
+        <!-- Chart 3: Daily Conversion vs Drop-off -->
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Conversion vs Drop-off</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — each bar = total prebookings for that day</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#f59e0b;display:inline-block"></span>Cancelled</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#ef4444;display:inline-block"></span>Failed</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#a78bfa;display:inline-block"></span>Discarded</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#d1d5db;display:inline-block"></span>No Action</span>
+          </div>
+          <div id="cum-dropoff"></div>
+        </div>
+
+        <!-- Chart 4: Funnel Efficiency — daily -->
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Funnel Efficiency (Daily)</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — per-day conversion rates</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled / Created %</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#059669;display:inline-block"></span>Completed / Scheduled %</span>
+          </div>
+          <div id="cum-efficiency"></div>
+        </div>
+
+      </div>
+
+      <!-- Row 3: Funnel Efficiency (Cumulative) + New Users per Day -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Funnel Efficiency (Cumulative)</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: cumulative sheet — running conversion rates</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled / Created %</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#059669;display:inline-block"></span>Completed / Scheduled %</span>
+          </div>
+          <div id="cum-efficiency-cum"></div>
+        </div>
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">New Users per Day</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — first-time users each day</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#8b5cf6;display:inline-block"></span>New Users</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#0ea5e9;display:inline-block"></span>Total Unique Users</span>
+          </div>
+          <div id="cum-new-users"></div>
+        </div>
+      </div>
+
+    </div><!-- #cum-charts -->
+
+
+  </div>
+
+<script>
+  const SHEETS_CSV_URL     = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXRW9e8AHCY9Lx_Z3XVbWdS5xOnwbiInLE6ln16HSYLwKmLNyZUQaCZpVR56fbkPVAE-5xvg9D9OMS/pub?output=csv';
+  const CUMULATIVE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTXRW9e8AHCY9Lx_Z3XVbWdS5xOnwbiInLE6ln16HSYLwKmLNyZUQaCZpVR56fbkPVAE-5xvg9D9OMS/pub?gid=2137947470&single=true&output=csv';
+
+  // ── CSV parser ───────────────────────────────────────────────
+  function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const headers = lines[0].split(',').map(h => h.trim());
+    return lines.slice(1).filter(l => l.trim()).map(line => {
+      const vals = line.split(',');
+      const row = {};
+      headers.forEach((h, i) => { row[h] = (vals[i] || '').trim(); });
+      return row;
+    });
+  }
+
+  // ── Map one CSV row → internal snapshot object ───────────────
+  function rowToSnap(r) {
+    const n = k => Math.max(parseInt(r[k] || '0', 10) || 0, 0);
+    return {
+      created:       n('total_prebookings'),
+      users:         n('unique_prospects'),
+      new_users:     n('new_users'),
+      scheduled:     n('scheduled_tours'),
+      tour_started:  n('tour_started'),
+      completed:     n('completed_tours'),
+      cancelled:     n('cancelled_prebookings'),
+      discarded:     n('discarded_prebookings'),
+      failed:        n('failed_prebookings'),
+      redirection:   n('scheduled_via_redirection'),
+      rently_direct: n('scheduled_in_rently'),
+    };
+  }
+
+  // ── Compute individual-day activity from two cumulative snaps ─
+  function diffSnaps(curr, prev) {
+    const d = {};
+    Object.keys(curr).forEach(k => { d[k] = Math.max((curr[k]||0) - (prev[k]||0), 0); });
+    return d;
+  }
+
+  // ── Build PREBOOKING_DATA from parsed CSV rows ────────────────
+  function buildDataFromCSV(csvRows) {
+    // Skip rows where Day is not a plain positive integer (e.g. "1+2" summary rows)
+    const intRows = csvRows.filter(r => /^\d+$/.test((r.Day || '').trim()));
+    const sorted = [...intRows].sort((a, b) => +a.Day - +b.Day);
+    const snaps = {};
+    sorted.forEach(r => { snaps[+r.Day] = rowToSnap(r); });
+    const days = sorted.map(r => +r.Day);
+    const d1   = snaps[days[0]] || {};
+
+    // Individual daily rows = diff of consecutive cumulative snapshots (for D1→D30 trends)
+    const daily = days.map((day, i) => {
+      const snap = snaps[day];
+      const prev = i > 0 ? snaps[days[i - 1]] : null;
+      const ind  = prev ? diffSnaps(snap, prev) : { ...snap };
+      return { day, date: 'Day ' + day, ...ind };
+    });
+
+    // Cumulative = last row (each row is already a running total)
+    const cumulative = snaps[days[days.length - 1]];
+
+    return {
+      d1,
+      d2:  snaps[2]  || null,
+      d7:  snaps[7]  || null,
+      d30: snaps[30] || null,
+      cumulative,
+      daily,
+      _snaps: snaps,
+      _days:  days,
+    };
+  }
+
+  let D = null;  // daily sheet data
+  let C = null;  // cumulative sheet: { dayNum: snap }
+  const COHORT_LABELS = { perday: 'Per Day', cumulative: 'Cumulative' };
+  const COHORT_TAG    = { perday: 'tag-d1',  cumulative: 'tag-cumulative' };
+  let _cohort = 'perday';
+  let _perday = 1; // currently selected day in Per Day tab
+
+  // ── Get the snap for the currently selected per-day number ───
+  function getPerDaySnap() {
+    return (D && D._snaps && D._snaps[_perday]) ? D._snaps[_perday] : (D ? D.d1 || {} : {});
+  }
+
+  // ── Populate the per-day select dropdown from available days ─
+  function populateDaySelect() {
+    const sel = document.getElementById('perday-select');
+    if (!sel || !D || !D._days) return;
+    const prev = +sel.value || _perday;
+    sel.innerHTML = D._days.map(d => `<option value="${d}"${d === prev ? ' selected' : ''}>Day ${d}</option>`).join('');
+    _perday = D._days.includes(prev) ? prev : D._days[0];
+    sel.value = _perday;
+  }
+
+  // ── Called when per-day dropdown changes ─────────────────────
+  function onPerDaySelect(val) {
+    _perday = +val;
+    renderPerDay();
+  }
+
+  // ── Render Per Day tab ────────────────────────────────────────
+  function renderPerDay() {
+    const d   = getPerDaySnap();
+    const tag = document.getElementById('funnel-tag');
+    if (tag) { tag.className = 'tag tag-d1'; tag.textContent = 'Day ' + _perday; }
+    renderKPIsInto('kpi-grid', d, true);
+    renderRatesInto('rate-grid', d);
+    renderFunnelInto('funnel-single', d);
+    renderSourceChartInto('source-chart', d);
+  }
+
+
+  // Reads from cumulative sheet C (keyed by day number).
+  // day = slider value; if null, returns the latest available day.
+  // Falls back to D.cumulative (last daily row) if C not loaded.
+  function buildCumulative(day) {
+    if (C) {
+      const days = Object.keys(C).map(Number).sort((a, b) => a - b);
+      if (days.length) {
+        const target = day ? days.filter(d => d <= +day).pop() : days[days.length - 1];
+        if (target != null) return C[target];
+      }
+    }
+    return D.cumulative || D.d1 || {};
+  }
+
+  // ── Tooltip helpers ───────────────────────────────────────────
+  const _tip = () => document.getElementById('chart-tip');
+  window._tipData = [];
+  function _storeTip(html) { window._tipData.push(html); return window._tipData.length - 1; }
+  function tipShow(idx, e) {
+    const t = _tip(); if (!t) return;
+    t.innerHTML = window._tipData[idx] || '';
+    t.style.display = 'block';
+    tipMove(e);
+  }
+  function tipMove(e) {
+    const t = _tip(); if (!t) return;
+    const x = e.clientX + 14, y = e.clientY - 10;
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+    const r = t.getBoundingClientRect();
+    if (r.right  > window.innerWidth)  t.style.left = (e.clientX - r.width  - 10) + 'px';
+    if (r.bottom > window.innerHeight) t.style.top  = (e.clientY - r.height - 10) + 'px';
+  }
+  function tipHide() { const t = _tip(); if (t) t.style.display = 'none'; }
+
+  // ── Generic SVG grouped bar chart (with hover tooltips) ───────
+  function svgBarChart(containerId, series, labels, opts) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const W = el.clientWidth || 600;
+    const H = opts.H || 220;
+    const padL = 38, padR = 12, padT = 16, padB = 32;
+    const chartW = W - padL - padR, chartH = H - padT - padB;
+    const n = labels.length, m = series.length;
+    if (!n) { el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">No data in selected range.</p>'; return; }
+    const allVals = series.flatMap(s => s.values);
+    const rawMax = Math.max(...allVals, 1);
+    const yMax = opts.pct ? Math.min(Math.ceil(rawMax / 5) * 5 + 5, 100)
+                          : (Math.ceil(rawMax / 10) * 10 || 10);
+    const suffix = opts.pct ? '%' : '';
+    const ff = 'font-family="system-ui,sans-serif"';
+    const slotW = chartW / n;
+    const grpW  = slotW * 0.80;
+    const barW  = Math.max((grpW - (m - 1) * 2) / m, 3);
+    const r2    = Math.min(3, barW / 2);
+    const every = n <= 10 ? 1 : n <= 20 ? 2 : 5;
+    const totals = series[0].values; // first series = reference (created)
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">`;
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + chartH - (i / 4) * chartH;
+      const v = Math.round((i / 4) * yMax);
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="#f3f4f6" stroke-width="${i===0?1.5:1}"/>`;
+      svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}${suffix}</text>`;
+    }
+    series.forEach((s, j) => {
+      s.values.forEach((v, i) => {
+        const bh = Math.max(2, (v / yMax) * chartH);
+        const bx = padL + i * slotW + (slotW - grpW) / 2 + j * (barW + 2);
+        const by = padT + chartH - bh;
+        const pct = totals[i] ? ((v / totals[i]) * 100).toFixed(1) : '—';
+        const tipHtml = `<b style="color:${s.color}">${s.label || 'Series '+(j+1)}</b> &mdash; ${labels[i]}<br>${v}${suffix}` +
+          (!opts.pct && totals[i] ? ` <span style="opacity:.65">(${pct}% of created)</span>` : '');
+        const ti = _storeTip(tipHtml);
+        svg += `<path d="M${(bx+r2).toFixed(1)},${by.toFixed(1)} Q${bx.toFixed(1)},${by.toFixed(1)} ${bx.toFixed(1)},${(by+r2).toFixed(1)} L${bx.toFixed(1)},${(by+bh).toFixed(1)} L${(bx+barW).toFixed(1)},${(by+bh).toFixed(1)} L${(bx+barW).toFixed(1)},${(by+r2).toFixed(1)} Q${(bx+barW).toFixed(1)},${by.toFixed(1)} ${(bx+barW-r2).toFixed(1)},${by.toFixed(1)} Z" fill="${s.color}" opacity="0.85" style="cursor:pointer" onmouseenter="tipShow(${ti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"/>`;
+        if (n <= 14 && v > 0)
+          svg += `<text x="${(bx+barW/2).toFixed(1)}" y="${(by-3).toFixed(1)}" text-anchor="middle" fill="${s.color}" font-size="8" font-weight="700" ${ff}>${v}${suffix}</text>`;
+      });
+    });
+    labels.forEach((l, i) => {
+      if (i % every !== 0 && i !== n - 1) return;
+      const cx = padL + i * slotW + slotW / 2;
+      svg += `<text x="${cx.toFixed(1)}" y="${(padT+chartH+14).toFixed(1)}" text-anchor="middle" fill="#6b7280" font-size="9" font-weight="600" ${ff}>${l}</text>`;
+    });
+    svg += '</svg>';
+    el.innerHTML = svg;
+  }
+
+  // ── Stacked bar chart (each bar = total, hover shows count+%) ─
+  function svgStackedBarChart(containerId, stackSeries, labels, opts) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const W = el.clientWidth || 600;
+    const H = opts.H || 200;
+    const padL = 44, padR = 12, padT = 16, padB = 32;
+    const chartW = W - padL - padR, chartH = H - padT - padB;
+    const n = labels.length;
+    if (!n) { el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">No data in selected range.</p>'; return; }
+    const totals = labels.map((_, i) => stackSeries.reduce((s, ser) => s + (ser.values[i] || 0), 0));
+    const yMax = Math.ceil(Math.max(...totals, 1) / 10) * 10 || 10;
+    const ff = 'font-family="system-ui,sans-serif"';
+    const slotW = chartW / n;
+    const barW  = Math.max(slotW * 0.65, 4);
+    const r2    = Math.min(4, barW / 2);
+    const every = n <= 10 ? 1 : n <= 20 ? 2 : 5;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">`;
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + chartH - (i / 4) * chartH;
+      const v = Math.round((i / 4) * yMax);
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="#f3f4f6" stroke-width="${i===0?1.5:1}"/>`;
+      svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}</text>`;
+    }
+    labels.forEach((lbl, i) => {
+      const bx = padL + i * slotW + (slotW - barW) / 2;
+      let curY = padT + chartH;
+      stackSeries.forEach((s, si) => {
+        const v = s.values[i] || 0;
+        if (v <= 0) return;
+        const bh = (v / yMax) * chartH;
+        curY -= bh;
+        const isTop = stackSeries.slice(si + 1).every(ss => (ss.values[i] || 0) === 0);
+        const pct = totals[i] ? ((v / totals[i]) * 100).toFixed(1) : '0';
+        const tipHtml = `<b>${lbl}</b><br><span style="color:${s.color}">&#9632;</span> ${s.label}: <b>${v}</b> <span style="opacity:.65">(${pct}% of ${totals[i]})</span>`;
+        const ti = _storeTip(tipHtml);
+        const evts = `style="cursor:pointer" onmouseenter="tipShow(${ti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"`;
+        if (isTop) {
+          svg += `<path d="M${(bx+r2).toFixed(1)},${curY.toFixed(1)} Q${bx.toFixed(1)},${curY.toFixed(1)} ${bx.toFixed(1)},${(curY+r2).toFixed(1)} L${bx.toFixed(1)},${(curY+bh).toFixed(1)} L${(bx+barW).toFixed(1)},${(curY+bh).toFixed(1)} L${(bx+barW).toFixed(1)},${(curY+r2).toFixed(1)} Q${(bx+barW).toFixed(1)},${curY.toFixed(1)} ${(bx+barW-r2).toFixed(1)},${curY.toFixed(1)} Z" fill="${s.color}" opacity="0.88" ${evts}/>`;
+        } else {
+          svg += `<rect x="${bx.toFixed(1)}" y="${curY.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${s.color}" opacity="0.88" ${evts}/>`;
+        }
+        if (bh >= 14 && n <= 14)
+          svg += `<text x="${(bx+barW/2).toFixed(1)}" y="${(curY+bh/2+4).toFixed(1)}" text-anchor="middle" fill="#fff" font-size="8" font-weight="700" opacity="0.9" ${ff}>${pct}%</text>`;
+      });
+      if (n <= 14 && totals[i] > 0) {
+        const topY = padT + chartH - (totals[i] / yMax) * chartH;
+        svg += `<text x="${(bx+barW/2).toFixed(1)}" y="${(topY-3).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="8" font-weight="700" ${ff}>${totals[i]}</text>`;
+      }
+    });
+    labels.forEach((l, i) => {
+      if (i % every !== 0 && i !== n - 1) return;
+      const cx = padL + i * slotW + slotW / 2;
+      svg += `<text x="${cx.toFixed(1)}" y="${(padT+chartH+14).toFixed(1)}" text-anchor="middle" fill="#6b7280" font-size="9" font-weight="600" ${ff}>${l}</text>`;
+    });
+    svg += '</svg>';
+    el.innerHTML = svg;
+  }
+
+  // ── Generic SVG multi-line chart ──────────────────────────────
+  function svgLineChart(containerId, series, labels, opts) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const W = el.clientWidth || 600;
+    const H = opts.H || 220;
+    const padL = 44, padR = 16, padT = 16, padB = 32;
+    const chartW = W - padL - padR, chartH = H - padT - padB;
+    const n = labels.length;
+    if (!n) { el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">No data in selected range.</p>'; return; }
+    const allVals = series.flatMap(s => s.values);
+    const rawMax = Math.max(...allVals, 1);
+    const yMax = opts.pct ? Math.min(Math.ceil(rawMax / 5) * 5 + 5, 100)
+                          : (Math.ceil(rawMax / 10) * 10 || 10);
+    const suffix = opts.pct ? '%' : '';
+    const ff = 'font-family="system-ui,sans-serif"';
+    const hPad = Math.min(20, chartW * 0.05); // horizontal inset so first/last points don't touch axes
+    const xPos = i => padL + hPad + (n === 1 ? (chartW - 2 * hPad) / 2 : i / (n - 1) * (chartW - 2 * hPad));
+    const yPos = v => padT + chartH - Math.min(v / yMax, 1) * chartH;
+    const every = n <= 10 ? 1 : n <= 20 ? 2 : 5;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">`;
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + chartH - (i / 4) * chartH;
+      const v = Math.round((i / 4) * yMax);
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="#f3f4f6" stroke-width="${i===0?1.5:1}"/>`;
+      svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}${suffix}</text>`;
+    }
+    series.forEach(s => {
+      if (!s.values.length) return;
+      let area = `M${xPos(0).toFixed(1)},${(padT+chartH).toFixed(1)}`;
+      s.values.forEach((v, i) => { area += ` L${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`; });
+      area += ` L${xPos(n-1).toFixed(1)},${(padT+chartH).toFixed(1)} Z`;
+      svg += `<path d="${area}" fill="${s.color}" opacity="0.08"/>`;
+      const path = s.values.map((v, i) => `${i===0?'M':'L'}${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`).join(' ');
+      svg += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      s.values.forEach((v, i) => {
+        svg += `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(v).toFixed(1)}" r="3" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>`;
+        if (n <= 14 && v > 0)
+          svg += `<text x="${xPos(i).toFixed(1)}" y="${(yPos(v)-7).toFixed(1)}" text-anchor="middle" fill="${s.color}" font-size="8" font-weight="700" ${ff}>${v}${suffix}</text>`;
+      });
+    });
+    labels.forEach((l, i) => {
+      if (i % every !== 0 && i !== n - 1) return;
+      svg += `<text x="${xPos(i).toFixed(1)}" y="${(padT+chartH+14).toFixed(1)}" text-anchor="middle" fill="#6b7280" font-size="9" font-weight="600" ${ff}>${l}</text>`;
+    });
+    svg += '</svg>';
+    el.innerHTML = svg;
+  }
+
+  // ── Render all 4 cumulative extra charts ──────────────────────
+  function renderCumCharts(day) {
+    const dailyRows = D && D.daily ? D.daily.filter(r => !day || r.day <= day) : [];
+    const labels    = dailyRows.map(r => 'D' + r.day);
+
+    // Chart 1: Daily Activity Bars — use raw sheet values (D._snaps), not diffed
+    const snapDays = D && D._days ? D._days.filter(d => !day || d <= day) : [];
+    svgBarChart('cum-daily-activity', [
+      { color: '#6366f1', label: 'Created',      values: snapDays.map(d => (D._snaps[d] || {}).created      || 0) },
+      { color: '#10b981', label: 'Scheduled',    values: snapDays.map(d => (D._snaps[d] || {}).scheduled    || 0) },
+      { color: '#0891b2', label: 'Tour Started', values: snapDays.map(d => (D._snaps[d] || {}).tour_started || 0) },
+      { color: '#059669', label: 'Completed',    values: snapDays.map(d => (D._snaps[d] || {}).completed    || 0) },
+    ], snapDays.map(d => 'D' + d), { H: 160 });
+
+    // Chart 2: Cumulative Build-up (from C)
+    if (C) {
+      const cDays   = Object.keys(C).map(Number).sort((a, b) => a - b).filter(d => !day || d <= day);
+      const cLabels = cDays.map(d => 'D' + d);
+      svgLineChart('cum-buildup', [
+        { color: '#6366f1', values: cDays.map(d => C[d].created   || 0) },
+        { color: '#10b981', values: cDays.map(d => C[d].scheduled || 0) },
+        { color: '#059669', values: cDays.map(d => C[d].completed || 0) },
+      ], cLabels, { H: 160 });
+    } else {
+      const el = document.getElementById('cum-buildup');
+      if (el) el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">Sync to load cumulative sheet data.</p>';
+    }
+
+    // Chart 3: Conversion vs Drop-off — stacked bar, total = created
+    svgStackedBarChart('cum-dropoff', [
+      { color: '#10b981', label: 'Scheduled',  values: snapDays.map(d => (D._snaps[d] || {}).scheduled || 0) },
+      { color: '#f59e0b', label: 'Cancelled',  values: snapDays.map(d => (D._snaps[d] || {}).cancelled || 0) },
+      { color: '#ef4444', label: 'Failed',     values: snapDays.map(d => (D._snaps[d] || {}).failed    || 0) },
+      { color: '#a78bfa', label: 'Discarded',  values: snapDays.map(d => (D._snaps[d] || {}).discarded || 0) },
+      { color: '#d1d5db', label: 'No Action',  values: snapDays.map(d => {
+          const s = D._snaps[d] || {};
+          return Math.max((s.created||0) - (s.scheduled||0) - (s.cancelled||0) - (s.failed||0) - (s.discarded||0), 0);
+        })
+      },
+    ], snapDays.map(d => 'D' + d), { H: 160 });
+
+    // Chart 4: Funnel Efficiency Trend — daily (line)
+    svgLineChart('cum-efficiency', [
+      { color: '#10b981', values: dailyRows.map(r => r.created   ? +((r.scheduled||0)/r.created*100).toFixed(1)   : 0) },
+      { color: '#059669', values: dailyRows.map(r => r.scheduled ? +((r.completed||0)/r.scheduled*100).toFixed(1) : 0) },
+    ], labels, { H: 160, pct: true });
+
+    // Chart 5: Funnel Efficiency — cumulative (from C, running totals)
+    if (C) {
+      const cDays2   = Object.keys(C).map(Number).sort((a, b) => a - b).filter(d => !day || d <= day);
+      const cLabels2 = cDays2.map(d => 'D' + d);
+      svgLineChart('cum-efficiency-cum', [
+        { color: '#10b981', values: cDays2.map(d => C[d].created   ? +((C[d].scheduled||0)/C[d].created*100).toFixed(1)   : 0) },
+        { color: '#059669', values: cDays2.map(d => C[d].scheduled ? +((C[d].completed||0)/C[d].scheduled*100).toFixed(1) : 0) },
+      ], cLabels2, { H: 160, pct: true });
+    } else {
+      const el = document.getElementById('cum-efficiency-cum');
+      if (el) el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">Sync to load cumulative sheet data.</p>';
+    }
+
+    // Chart 6: New Users per Day (daily sheet — new_users is a per-day column)
+    svgBarChart('cum-new-users', [
+      { color: '#8b5cf6', values: snapDays.map(d => (D._snaps[d] || {}).new_users || 0) },
+      { color: '#0ea5e9', values: snapDays.map(d => (D._snaps[d] || {}).users     || 0) },
+    ], snapDays.map(d => 'D' + d), { H: 160 });
+  }
+
+  const METRICS = [
+    { key: 'created',   label: 'Prebookings Created',    cls: 'cc-created',   color: '#6366f1', icon: '📋' },
+    { key: 'users',     label: 'Unique Users',            cls: 'cc-users',     color: '#0ea5e9', icon: '👤' },
+    { key: 'new_users', label: 'New Users',               cls: 'cc-new-users', color: '#8b5cf6', icon: '🆕' },
+    { key: 'scheduled', label: 'Converted to Scheduled', cls: 'cc-scheduled', color: '#10b981', icon: '📅' },
+    { key: 'completed', label: 'Tours Completed',         cls: 'cc-completed', color: '#059669', icon: '✅' },
+    { key: 'cancelled', label: 'Cancelled Prebookings',   cls: 'cc-cancelled', color: '#f59e0b', icon: '⚠️', invert: true },
+    { key: 'discarded', label: 'Discarded Prebookings',   cls: 'cc-discarded', color: '#ef4444', icon: '🗑️', invert: true },
+  ];
+
+  const RATE_METRICS = [
+    { cls: 'rc-sched', label: 'Prebooked → Scheduled', n: d => d.scheduled, den: d => d.created,   sub: 'of prebookings converted to scheduled' },
+    { cls: 'rc-compc', label: 'Prebooked → Completed', n: d => d.completed, den: d => d.created,   sub: 'of prebookings ultimately completed' },
+    { cls: 'rc-comps', label: 'Scheduled → Completed', n: d => d.completed, den: d => d.scheduled, sub: 'of scheduled tours completed' },
+    { cls: 'rc-canc',  label: 'Cancellation Rate',      n: d => d.cancelled, den: d => d.created,   sub: 'of prebookings cancelled', invert: true },
+    { cls: 'rc-disc',  label: 'Discard Rate',            n: d => d.discarded, den: d => d.created,   sub: 'of prebookings discarded', invert: true },
+    { cls: 'rc-ppl',   label: 'Prebookings per Lead',    n: d => d.created,   den: d => d.users,     sub: 'prebookings per unique user', ratio: true },
+  ];
+
+  // ── Helpers ──────────────────────────────────────────────────
+  function countDeltaHTML(cohort, key, invert) {
+    if (cohort === 'd1') return '';
+    const base = D.d1[key], curr = D[cohort][key];
+    if (!base) return '';
+    const pct  = Math.round(((curr - base) / base) * 100);
+    const sign = pct >= 0 ? '+' : '';
+    const good = invert ? pct < 0 : pct > 0;
+    const bad  = invert ? pct > 0 : pct < 0;
+    const cls  = good ? 'delta-up' : bad ? 'delta-dn' : 'delta-neu';
+    return `<span class="rc-badge ${cls}">${sign}${pct}%</span>`;
+  }
+
+  function rateDeltaHTML(cohort, rm) {
+    if (cohort === 'd1') return '';
+    const bN = rm.n(D.d1), bD = rm.den(D.d1), cN = rm.n(D[cohort]), cD = rm.den(D[cohort]);
+    if (!bD || !cD) return '';
+    if (rm.ratio) {
+      const diff = ((cN / cD) - (bN / bD)).toFixed(2);
+      const sign = diff >= 0 ? '+' : '';
+      const cls  = diff > 0 ? 'delta-up' : diff < 0 ? 'delta-dn' : 'delta-neu';
+      return `<span class="rc-badge ${cls}">${sign}${diff}</span>`;
+    }
+    const diff = (((cN / cD) - (bN / bD)) * 100).toFixed(1);
+    const sign = diff >= 0 ? '+' : '';
+    const good = rm.invert ? diff < 0 : diff > 0;
+    const bad  = rm.invert ? diff > 0 : diff < 0;
+    const cls  = good ? 'delta-up' : bad ? 'delta-dn' : 'delta-neu';
+    return `<span class="rc-badge ${cls}">${sign}${diff}pp</span>`;
+  }
+
+  function subText(cohort, key) {
+    const d = D[cohort];
+    if (key === 'new_users')  return `${d.users ? ((d.new_users / d.users) * 100).toFixed(1) : '\u2013'}% of unique users`;
+    if (key === 'scheduled') return `${d.created   ? ((d.scheduled / d.created)   * 100).toFixed(1) : '\u2013'}% of created`;
+    if (key === 'completed') return `${d.created ? ((d.completed / d.created) * 100).toFixed(1) : '\u2013'}% of prebookings`;
+    if (key === 'cancelled') return `${d.created ? ((d.cancelled / d.created) * 100).toFixed(1) : '\u2013'}% of prebookings`;
+    if (key === 'discarded') return `${d.created ? ((d.discarded / d.created) * 100).toFixed(1) : '\u2013'}% of prebookings`;
+    return '&nbsp;';
+  }
+
+  // ── Render helpers ───────────────────────────────────────────
+  function animateGrid(id, html) {
+    const g = document.getElementById(id);
+    g.classList.remove('visible');
+    g.classList.add('animating');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      g.innerHTML = html;
+      g.classList.remove('animating');
+      g.classList.add('visible');
+    }));
+  }
+
+  // ── KPI / Count Cards ────────────────────────────────────────
+  function renderKPIs(cohort, animate) {
+    const data = D[cohort];
+    const html = METRICS.map(m => {
+      const barPct = data.created ? Math.min((data[m.key] / data.created) * 100, 100).toFixed(1) : 0;
+      return `
+        <div class="card count-card ${m.cls}">
+          <div class="cc-top">
+            <div class="cc-label">${m.label}</div>
+            <div class="cc-dot">${m.icon}</div>
+          </div>
+          <div>
+            <div class="cc-value">${data[m.key].toLocaleString()}</div>
+            ${countDeltaHTML(cohort, m.key, m.invert) ? `<div style="margin-top:4px">${countDeltaHTML(cohort, m.key, m.invert)}</div>` : ''}
+          </div>
+          <div>
+            <div class="cc-sub">${subText(cohort, m.key)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${m.color}"></div></div>
+          </div>
+        </div>`;
+    }).join('');
+    animate ? animateGrid('kpi-grid', html) : (document.getElementById('kpi-grid').innerHTML = html);
+  }
+
+  // ── Rate Cards ───────────────────────────────────────────────
+  function renderRates(cohort, animate) {
+    const d = D[cohort];
+    const html = RATE_METRICS.map(rm => {
+      const n   = rm.n(d), den = rm.den(d);
+      const val  = rm.ratio ? (den ? (n / den).toFixed(2) : '–') : (den ? ((n / den) * 100).toFixed(1) : '–');
+      const unit = rm.ratio ? '' : '%';
+      return `
+        <div class="card rate-card ${rm.cls}">
+          <div class="rc-top">
+            <div class="rc-label">${rm.label}</div>
+            ${rateDeltaHTML(cohort, rm)}
+          </div>
+          <div class="rc-value">${val}${unit}</div>
+          <div>
+            <div class="rc-count">${n.toLocaleString()} / ${den.toLocaleString()}</div>
+            <div class="rc-sub">${rm.sub}</div>
+          </div>
+        </div>`;
+    }).join('');
+    animate ? animateGrid('rate-grid', html) : (document.getElementById('rate-grid').innerHTML = html);
+  }
+
+  // ── Funnel ───────────────────────────────────────────────────
+  function renderFunnel(cohort) {
+    const d = D[cohort];
+    const container = document.getElementById('funnel-single');
+
+    const ft = document.getElementById('funnel-tag');
+    ft.className   = `tag ${COHORT_TAG[cohort]}`;
+    ft.textContent = COHORT_LABELS[cohort];
+
+    const W        = container.clientWidth || 560;
+    const SIDE     = 96;
+    const barStart = SIDE;
+    const barEnd   = W - SIDE;
+    const barMax   = barEnd - barStart;
+    const cx       = W / 2;
+    const bw = val => Math.max((val / d.created) * barMax, 8);
+
+    const stageH = 58, connH = 72;
+    const totalH = stageH * 4 + connH * 3;
+    const ff = `font-family="system-ui,sans-serif"`;
+    const exitW = SIDE - 18;
+    const exitH = 40;
+
+    let svg = `<svg viewBox="0 0 ${W} ${totalH}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">`;
+
+    const stepLabel = (num, midY) => {
+      svg += `<text x="${SIDE - 10}" y="${(midY - 7).toFixed(1)}" text-anchor="end" fill="#d1d5db" font-size="7.5" font-weight="800" letter-spacing="0.06em" ${ff}>STEP</text>`;
+      svg += `<text x="${SIDE - 10}" y="${(midY + 9).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="15" font-weight="800" ${ff}>${num}</text>`;
+    };
+
+    const callout = (line1, line2, midY, x) => {
+      svg += `<text x="${x.toFixed(1)}" y="${(midY - (line2 ? 6 : 0)).toFixed(1)}" text-anchor="start" fill="#374151" font-size="11" font-weight="700" ${ff}>${line1}</text>`;
+      if (line2) svg += `<text x="${x.toFixed(1)}" y="${(midY + 10).toFixed(1)}" text-anchor="start" fill="#6b7280" font-size="10" ${ff}>${line2}</text>`;
+    };
+
+    // Step 1: Prebooked
+    const s1y = 0;
+    stepLabel(1, s1y + stageH / 2);
+    svg += `<rect x="${barStart}" y="${s1y}" width="${barMax}" height="${stageH}" rx="8" fill="#6366f1"/>`;
+    svg += `<text x="${cx}" y="${s1y + stageH/2 - 8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Prebooked</text>`;
+    svg += `<text x="${cx}" y="${s1y + stageH/2 + 12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${d.created.toLocaleString()} prebookings</text>`;
+
+    // Connector 1→2: full width narrows to scheduled width
+    const schedW  = bw(d.scheduled);
+    const schedX  = cx - schedW / 2;
+    const c1T     = s1y + stageH, c1B = c1T + connH;
+    const c1Mid   = (c1T + c1B) / 2;
+
+    svg += `<polygon points="${barStart},${c1T} ${barEnd},${c1T} ${(schedX+schedW).toFixed(1)},${c1B} ${schedX.toFixed(1)},${c1B}" fill="#6366f1" opacity="0.12"/>`;
+
+    // Failed total callout — centered in connector 1 area
+    const failed   = d.failed || 0;
+    const failPct  = d.created ? ((failed / d.created) * 100).toFixed(1) : '0';
+    const ftBgW = 300, ftBgH = 28, ftBgX = cx - 150, ftBgY = c1T + 8;
+    svg += `<rect x="${ftBgX.toFixed(1)}" y="${ftBgY.toFixed(1)}" width="${ftBgW}" height="${ftBgH}" rx="4" fill="#fff1f2" stroke="#fca5a5" stroke-width="1"/>`;
+    svg += `<text x="${cx}" y="${(ftBgY + 18.5).toFixed(1)}" text-anchor="middle" fill="#dc2626" font-size="13" font-weight="700" ${ff}>⚠ Failed Prebookings: ${failed.toLocaleString()} (${failPct}% of prebooked)</text>`;
+
+    // Side exit boxes (cancelled left, discarded right)
+    const cancPct = d.created ? ((d.cancelled / d.created) * 100).toFixed(1) : '0';
+    const discPct = d.created ? ((d.discarded / d.created) * 100).toFixed(1) : '0';
+    // funnel edge x at c1Mid (linear interpolation)
+    const leftEdgeMid  = barStart + (schedX           - barStart) * 0.5;
+    const rightEdgeMid = barEnd   + (schedX + schedW  - barEnd)   * 0.5;
+
+    // Cancelled — left
+    const lbx = 4, lby = c1Mid - exitH / 2;
+    svg += `<rect x="${lbx}" y="${lby.toFixed(1)}" width="${exitW}" height="${exitH}" rx="5" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>`;
+    svg += `<text x="${(lbx + exitW/2).toFixed(1)}" y="${(lby + 14).toFixed(1)}" text-anchor="middle" fill="#92400e" font-size="12" font-weight="700" ${ff}>Cancelled</text>`;
+    svg += `<text x="${(lbx + exitW/2).toFixed(1)}" y="${(lby + 30).toFixed(1)}" text-anchor="middle" fill="#b45309" font-size="13" font-weight="800" ${ff}>${d.cancelled.toLocaleString()} (${cancPct}%)</text>`;
+    svg += `<line x1="${(lbx + exitW).toFixed(1)}" y1="${c1Mid.toFixed(1)}" x2="${leftEdgeMid.toFixed(1)}" y2="${c1Mid.toFixed(1)}" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4,2.5" opacity="0.8"/>`;
+
+    // Discarded — right
+    const rbx = barEnd + 14, rby = c1Mid - exitH / 2;
+    svg += `<rect x="${rbx.toFixed(1)}" y="${rby.toFixed(1)}" width="${exitW}" height="${exitH}" rx="5" fill="#fee2e2" stroke="#ef4444" stroke-width="1.2"/>`;
+    svg += `<text x="${(rbx + exitW/2).toFixed(1)}" y="${(rby + 14).toFixed(1)}" text-anchor="middle" fill="#991b1b" font-size="12" font-weight="700" ${ff}>Discarded</text>`;
+    svg += `<text x="${(rbx + exitW/2).toFixed(1)}" y="${(rby + 30).toFixed(1)}" text-anchor="middle" fill="#b91c1c" font-size="13" font-weight="800" ${ff}>${d.discarded.toLocaleString()} (${discPct}%)</text>`;
+    svg += `<line x1="${rbx.toFixed(1)}" y1="${c1Mid.toFixed(1)}" x2="${rightEdgeMid.toFixed(1)}" y2="${c1Mid.toFixed(1)}" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="4,2.5" opacity="0.8"/>`;
+
+    // Needs action callout in c1 — consistent right-side x for all three callouts
+    const calloutX = schedX + schedW + 8;
+    const actioned    = (d.scheduled||0) + (d.cancelled||0) + (d.discarded||0) + (d.failed||0);
+    const needsAction = Math.max(d.created - actioned, 0);
+    const naPct       = d.created ? ((needsAction / d.created) * 100).toFixed(1) : '0';
+    callout(`↓ ${needsAction.toLocaleString()} needs action`, `${naPct}% of prebookings`, (c1T+c1B)/2, calloutX);
+
+    // Step 2: Scheduled
+    const s2y = c1B;
+    stepLabel(2, s2y + stageH / 2);
+    const schPct = d.created ? ((d.scheduled / d.created) * 100).toFixed(1) : '–';
+    svg += `<rect x="${schedX.toFixed(1)}" y="${s2y}" width="${schedW.toFixed(1)}" height="${stageH}" rx="8" fill="#10b981"/>`;
+    svg += `<text x="${cx}" y="${s2y + stageH/2 - 8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Scheduled</text>`;
+    svg += `<text x="${cx}" y="${s2y + stageH/2 + 12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${d.scheduled.toLocaleString()} · ${schPct}% of prebooked</text>`;
+
+    // Connector 2→3: scheduled width narrows to tour_started width
+    const tsVal  = d.tour_started || 0;
+    const tsW    = bw(tsVal), tsX = cx - tsW / 2;
+    const c2T = s2y + stageH, c2B = c2T + connH;
+    svg += `<polygon points="${schedX.toFixed(1)},${c2T} ${(schedX+schedW).toFixed(1)},${c2T} ${(tsX+tsW).toFixed(1)},${c2B} ${tsX.toFixed(1)},${c2B}" fill="#10b981" opacity="0.12"/>`;
+    const notStarted = d.scheduled - tsVal;
+    const nsPct = d.scheduled ? ((notStarted / d.scheduled) * 100).toFixed(1) : '0';
+    callout(
+      notStarted > 0 ? `↓ ${notStarted.toLocaleString()} tour not started` : `All tours started`,
+      notStarted > 0 ? `${nsPct}% of scheduled` : null,
+      (c2T + c2B) / 2, calloutX
+    );
+
+    // Step 3: Tour Started
+    const s3y = c2B;
+    stepLabel(3, s3y + stageH / 2);
+    const tsPct = d.scheduled ? ((tsVal / d.scheduled) * 100).toFixed(1) : '–';
+    svg += `<rect x="${tsX.toFixed(1)}" y="${s3y}" width="${tsW.toFixed(1)}" height="${stageH}" rx="8" fill="#0891b2"/>`;
+    svg += `<text x="${cx}" y="${s3y + stageH/2 - 8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Tour Started</text>`;
+    svg += `<text x="${cx}" y="${s3y + stageH/2 + 12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${tsVal.toLocaleString()} · ${tsPct}% of scheduled</text>`;
+
+    // Connector 3→4: tour_started narrows to completed width
+    const compW = bw(d.completed), compX = cx - compW / 2;
+    const c3T = s3y + stageH, c3B = c3T + connH;
+    svg += `<polygon points="${tsX.toFixed(1)},${c3T} ${(tsX+tsW).toFixed(1)},${c3T} ${(compX+compW).toFixed(1)},${c3B} ${compX.toFixed(1)},${c3B}" fill="#0891b2" opacity="0.12"/>`;
+    const lost3 = tsVal - d.completed, lp3 = tsVal ? ((lost3 / tsVal) * 100).toFixed(1) : '0';
+    callout(
+      lost3 > 0 ? `↓ ${lost3.toLocaleString()} not completed` : `All completed`,
+      lost3 > 0 ? `${lp3}% of started` : null,
+      (c3T + c3B) / 2, calloutX
+    );
+
+    // Step 4: Completed
+    const s4y = c3B;
+    stepLabel(4, s4y + stageH / 2);
+    const cpPct = tsVal ? ((d.completed/tsVal)*100).toFixed(1) : '–';
+    svg += `<rect x="${compX.toFixed(1)}" y="${s4y}" width="${compW.toFixed(1)}" height="${stageH}" rx="8" fill="#059669"/>`;
+    svg += `<text x="${cx}" y="${s4y+stageH/2-8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Completed</text>`;
+    svg += `<text x="${cx}" y="${s4y+stageH/2+12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${d.completed.toLocaleString()} · ${cpPct}% of tour started</text>`;
+
+    svg += '</svg>';
+    container.innerHTML = svg;
+  }
+
+  // ── Source Bar Chart ───────────────────────────────────────────
+  function renderSourceChart(cohort) {
+    const container = document.getElementById('source-chart');
+    const W = container.clientWidth || 560;
+    const H = 180;
+    const padL = 36, padR = 16, padT = 24, padB = 36;
+    const chartW = W - padL - padR;
+    const chartH = H - padT - padB;
+    const ff = `font-family="system-ui,sans-serif"`;
+
+    const r    = D[cohort].redirection    || 0;
+    const rd   = D[cohort].rently_direct  || 0;
+    const w    = Math.max((D[cohort].scheduled || 0) - r - rd, 0);
+    const yMax = Math.ceil(Math.max(r, w, rd) / 20) * 20 || 100;
+    const gridLines = 4;
+
+    const barW  = Math.min(chartW * 0.15, 70);
+    const rX    = padL + chartW * 0.20 - barW / 2;
+    const wX    = padL + chartW * 0.50 - barW / 2;
+    const rdX   = padL + chartW * 0.80 - barW / 2;
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">`;
+
+    // gridlines + y-axis labels
+    for (let i = 0; i <= gridLines; i++) {
+      const y   = padT + chartH - (i / gridLines) * chartH;
+      const val = Math.round((i / gridLines) * yMax);
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL + chartW}" y2="${y.toFixed(1)}" stroke="#e5e7eb" stroke-width="${i === 0 ? 1.5 : 1}"/>`;
+      svg += `<text x="${padL - 5}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${val}</text>`;
+    }
+
+    const drawBar = (val, color, bx, name) => {
+      const bh  = (val / yMax) * chartH;
+      const by  = padT + chartH - bh;
+      const bcx = bx + barW / 2;
+      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(bh, 2).toFixed(1)}" rx="4" fill="${color}"/>`;
+      // value above bar
+      svg += `<text x="${bcx.toFixed(1)}" y="${(by - 7).toFixed(1)}" text-anchor="middle" fill="${color}" font-size="13" font-weight="800" ${ff}>${val}</text>`;
+      // % of scheduled
+      const sched = D[cohort].scheduled || 1;
+      const pct   = ((val / sched) * 100).toFixed(1);
+      svg += `<text x="${bcx.toFixed(1)}" y="${(by - 20).toFixed(1)}" text-anchor="middle" fill="#9ca3af" font-size="9" ${ff}>${pct}% of scheduled</text>`;
+      // label below
+      svg += `<text x="${bcx.toFixed(1)}" y="${(padT + chartH + 16).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="11" font-weight="700" ${ff}>${name}</text>`;
+    };
+
+    drawBar(r,  '#6366f1', rX,  'Redirection');
+    drawBar(w,  '#0ea5e9', wX,  'Webhook');
+    drawBar(rd, '#10b981', rdX, 'Direct (Rently)');
+
+    svg += '</svg>';
+    container.innerHTML = svg;
+  }
+
+  // ── Generic "Into" renderers (accept any container ID + raw data) ─────────
+
+  function renderKPIsInto(gridId, data, animate) {
+    const _sub = (key) => {
+      if (key === 'new_users')  return data.users    ? ((data.new_users / data.users)   * 100).toFixed(1) + '% of users'       : '';
+      if (key === 'scheduled')  return data.created  ? ((data.scheduled / data.created) * 100).toFixed(1) + '% of created'     : '';
+      if (key === 'completed')  return data.created ? ((data.completed / data.created) * 100).toFixed(1) + '% of prebookings' : '';
+      if (key === 'cancelled')  return data.created  ? ((data.cancelled / data.created) * 100).toFixed(1) + '% of prebookings' : '';
+      if (key === 'discarded')  return data.created  ? ((data.discarded / data.created) * 100).toFixed(1) + '% of prebookings' : '';
+      return '';
+    };
+    const html = METRICS.map(m => {
+      const barPct = data.created ? Math.min(((data[m.key] || 0) / data.created) * 100, 100).toFixed(1) : 0;
+      return `<div class="card count-card ${m.cls}">
+          <div class="cc-top"><div class="cc-label">${m.label}</div><div class="cc-dot">${m.icon}</div></div>
+          <div><div class="cc-value">${(data[m.key] || 0).toLocaleString()}</div></div>
+          <div>
+            <div class="cc-sub">${_sub(m.key)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${barPct}%;background:${m.color}"></div></div>
+          </div>
+        </div>`;
+    }).join('');
+    animate ? animateGrid(gridId, html) : (document.getElementById(gridId).innerHTML = html);
+  }
+
+  function renderRatesInto(gridId, data) {
+    const d = data;
+    const html = RATE_METRICS.map(rm => {
+      const n = rm.n(d), den = rm.den(d);
+      const val  = rm.ratio ? (den ? (n / den).toFixed(2) : '\u2013') : (den ? ((n / den) * 100).toFixed(1) : '\u2013');
+      const unit = rm.ratio ? '' : '%';
+      return `<div class="card rate-card ${rm.cls}">
+          <div class="rc-top"><div class="rc-label">${rm.label}</div></div>
+          <div class="rc-value">${val}${unit}</div>
+          <div>
+            <div class="rc-count">${n.toLocaleString()} / ${den.toLocaleString()}</div>
+            <div class="rc-sub">${rm.sub}</div>
+          </div>
+        </div>`;
+    }).join('');
+    document.getElementById(gridId).innerHTML = html;
+  }
+
+  function renderFunnelInto(containerId, d) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const W = container.clientWidth || 560;
+    const SIDE = 96, barStart = SIDE, barEnd = W - SIDE, barMax = barEnd - barStart, cx = W / 2;
+    const bw = val => Math.max(d.created ? (val / d.created) * barMax : 8, 8);
+    const stageH = 58, connH = 72;
+    const totalH = stageH * 4 + connH * 3;
+    const ff = `font-family="system-ui,sans-serif"`;
+    const exitW = SIDE - 18, exitH = 40;
+
+    let svg = `<svg viewBox="0 0 ${W} ${totalH}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">`;
+
+    const stepLabel = (num, midY) => {
+      svg += `<text x="${SIDE-10}" y="${(midY-7).toFixed(1)}" text-anchor="end" fill="#d1d5db" font-size="7.5" font-weight="800" letter-spacing="0.06em" ${ff}>STEP</text>`;
+      svg += `<text x="${SIDE-10}" y="${(midY+9).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="15" font-weight="800" ${ff}>${num}</text>`;
+    };
+    const callout = (l1, l2, midY, x) => {
+      svg += `<text x="${x.toFixed(1)}" y="${(midY - (l2 ? 6 : 0)).toFixed(1)}" text-anchor="start" fill="#374151" font-size="11" font-weight="700" ${ff}>${l1}</text>`;
+      if (l2) svg += `<text x="${x.toFixed(1)}" y="${(midY + 10).toFixed(1)}" text-anchor="start" fill="#6b7280" font-size="10" ${ff}>${l2}</text>`;
+    };
+
+    // Step 1
+    const s1y = 0;
+    stepLabel(1, s1y + stageH/2);
+    svg += `<rect x="${barStart}" y="${s1y}" width="${barMax}" height="${stageH}" rx="8" fill="#6366f1"/>`;
+    svg += `<text x="${cx}" y="${s1y+stageH/2-8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Prebooked</text>`;
+    svg += `<text x="${cx}" y="${s1y+stageH/2+12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${(d.created||0).toLocaleString()} prebookings</text>`;
+
+    const schedW = bw(d.scheduled||0), schedX = cx - schedW/2;
+    const c1T = s1y+stageH, c1B = c1T+connH, c1Mid = (c1T+c1B)/2;
+    svg += `<polygon points="${barStart},${c1T} ${barEnd},${c1T} ${(schedX+schedW).toFixed(1)},${c1B} ${schedX.toFixed(1)},${c1B}" fill="#6366f1" opacity="0.12"/>`;
+
+    // Failed total callout — centered in connector 1 area
+    const failed  = d.failed || 0;
+    const failPct = d.created ? ((failed/d.created)*100).toFixed(1) : '0';
+    const ftBgW = 300, ftBgH = 28, ftBgX = cx - 150, ftBgY = c1T + 8;
+    svg += `<rect x="${ftBgX.toFixed(1)}" y="${ftBgY.toFixed(1)}" width="${ftBgW}" height="${ftBgH}" rx="4" fill="#fff1f2" stroke="#fca5a5" stroke-width="1"/>`;
+    svg += `<text x="${cx}" y="${(ftBgY+18.5).toFixed(1)}" text-anchor="middle" fill="#dc2626" font-size="13" font-weight="700" ${ff}>⚠ Failed Prebookings: ${failed.toLocaleString()} (${failPct}% of prebooked)</text>`;
+
+    const cancPct = d.created ? ((d.cancelled/d.created)*100).toFixed(1) : '0';
+    const discPct = d.created ? ((d.discarded/d.created)*100).toFixed(1) : '0';
+    const leftEdgeMid  = barStart + (schedX-barStart)*0.5;
+    const rightEdgeMid = barEnd   + (schedX+schedW-barEnd)*0.5;
+    const lbx = 4, lby = c1Mid-exitH/2;
+    svg += `<rect x="${lbx}" y="${lby.toFixed(1)}" width="${exitW}" height="${exitH}" rx="5" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>`;
+    svg += `<text x="${(lbx+exitW/2).toFixed(1)}" y="${(lby+11).toFixed(1)}" text-anchor="middle" fill="#92400e" font-size="12" font-weight="700" ${ff}>Cancelled</text>`;
+    svg += `<text x="${(lbx+exitW/2).toFixed(1)}" y="${(lby+23).toFixed(1)}" text-anchor="middle" fill="#b45309" font-size="13" font-weight="800" ${ff}>${(d.cancelled||0).toLocaleString()} (${cancPct}%)</text>`;
+    svg += `<line x1="${(lbx+exitW).toFixed(1)}" y1="${c1Mid.toFixed(1)}" x2="${leftEdgeMid.toFixed(1)}" y2="${c1Mid.toFixed(1)}" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4,2.5" opacity="0.8"/>`;
+    const rbx = barEnd+14, rby = c1Mid-exitH/2;
+    svg += `<rect x="${rbx.toFixed(1)}" y="${rby.toFixed(1)}" width="${exitW}" height="${exitH}" rx="5" fill="#fee2e2" stroke="#ef4444" stroke-width="1.2"/>`;
+    svg += `<text x="${(rbx+exitW/2).toFixed(1)}" y="${(rby+11).toFixed(1)}" text-anchor="middle" fill="#991b1b" font-size="12" font-weight="700" ${ff}>Discarded</text>`;
+    svg += `<text x="${(rbx+exitW/2).toFixed(1)}" y="${(rby+23).toFixed(1)}" text-anchor="middle" fill="#b91c1c" font-size="13" font-weight="800" ${ff}>${(d.discarded||0).toLocaleString()} (${discPct}%)</text>`;
+    svg += `<line x1="${rbx.toFixed(1)}" y1="${c1Mid.toFixed(1)}" x2="${rightEdgeMid.toFixed(1)}" y2="${c1Mid.toFixed(1)}" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="4,2.5" opacity="0.8"/>`;
+
+    // Needs action callout in c1 — consistent right-side x for all three callouts
+    const calloutX = schedX + schedW + 8;
+    const actioned = (d.scheduled||0)+(d.cancelled||0)+(d.discarded||0)+(d.failed||0);
+    const needsAction = Math.max((d.created||0)-actioned, 0);
+    const naPct = d.created ? ((needsAction/d.created)*100).toFixed(1) : '0';
+    callout(`\u2193 ${needsAction.toLocaleString()} needs action`, `${naPct}% of prebookings`, (c1T+c1B)/2, calloutX);
+
+    // Step 2
+    const s2y = c1B;
+    stepLabel(2, s2y+stageH/2);
+    const schPct = d.created ? ((d.scheduled/d.created)*100).toFixed(1) : '\u2013';
+    svg += `<rect x="${schedX.toFixed(1)}" y="${s2y}" width="${schedW.toFixed(1)}" height="${stageH}" rx="8" fill="#10b981"/>`;
+    svg += `<text x="${cx}" y="${s2y+stageH/2-8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Scheduled</text>`;
+    svg += `<text x="${cx}" y="${s2y+stageH/2+12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${(d.scheduled||0).toLocaleString()} \u00b7 ${schPct}% of prebooked</text>`;
+    // Connector 2→3: scheduled → tour_started
+    const tsVal = d.tour_started || 0;
+    const tsW = bw(tsVal), tsX = cx - tsW/2;
+    const c2T = s2y+stageH, c2B = c2T+connH;
+    svg += `<polygon points="${schedX.toFixed(1)},${c2T} ${(schedX+schedW).toFixed(1)},${c2T} ${(tsX+tsW).toFixed(1)},${c2B} ${tsX.toFixed(1)},${c2B}" fill="#10b981" opacity="0.12"/>`;
+    const notStarted = (d.scheduled||0) - tsVal;
+    const nsPct = d.scheduled ? ((notStarted/d.scheduled)*100).toFixed(1) : '0';
+    callout(notStarted>0 ? `\u2193 ${notStarted.toLocaleString()} tour not started` : `All tours started`, notStarted>0 ? `${nsPct}% of scheduled` : null, (c2T+c2B)/2, calloutX);
+
+    // Step 3: Tour Started
+    const s3y = c2B;
+    stepLabel(3, s3y+stageH/2);
+    const tsPct = d.scheduled ? ((tsVal/d.scheduled)*100).toFixed(1) : '\u2013';
+    svg += `<rect x="${tsX.toFixed(1)}" y="${s3y}" width="${tsW.toFixed(1)}" height="${stageH}" rx="8" fill="#0891b2"/>`;
+    svg += `<text x="${cx}" y="${s3y+stageH/2-8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Tour Started</text>`;
+    svg += `<text x="${cx}" y="${s3y+stageH/2+12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${tsVal.toLocaleString()} \u00b7 ${tsPct}% of scheduled</text>`;
+
+    // Connector 3→4: tour_started → completed
+    const compW = bw(d.completed||0), compX = cx-compW/2;
+    const c3T = s3y+stageH, c3B = c3T+connH;
+    svg += `<polygon points="${tsX.toFixed(1)},${c3T} ${(tsX+tsW).toFixed(1)},${c3T} ${(compX+compW).toFixed(1)},${c3B} ${compX.toFixed(1)},${c3B}" fill="#0891b2" opacity="0.12"/>`;
+    const lost3 = tsVal-(d.completed||0);
+    const lp3 = tsVal ? ((lost3/tsVal)*100).toFixed(1) : '0';
+    callout(lost3>0 ? `\u2193 ${lost3.toLocaleString()} not completed` : `All completed`, lost3>0 ? `${lp3}% of started` : null, (c3T+c3B)/2, calloutX);
+
+    // Step 4: Completed
+    const s4y = c3B;
+    stepLabel(4, s4y+stageH/2);
+    const cpPct = tsVal ? ((d.completed/tsVal)*100).toFixed(1) : '\u2013';
+    svg += `<rect x="${compX.toFixed(1)}" y="${s4y}" width="${compW.toFixed(1)}" height="${stageH}" rx="8" fill="#059669"/>`;
+    svg += `<text x="${cx}" y="${s4y+stageH/2-8}" text-anchor="middle" fill="white" font-size="15" font-weight="700" ${ff}>Completed</text>`;
+    svg += `<text x="${cx}" y="${s4y+stageH/2+12}" text-anchor="middle" fill="rgba(255,255,255,.8)" font-size="16" ${ff}>${(d.completed||0).toLocaleString()} \u00b7 ${cpPct}% of tour started</text>`;
+    svg += '</svg>';
+    container.innerHTML = svg;
+  }
+
+  function renderSourceChartInto(containerId, data) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const W = container.clientWidth || 560;
+    const H = 180, padL = 36, padR = 16, padT = 24, padB = 36;
+    const chartW = W - padL - padR, chartH = H - padT - padB;
+    const ff = `font-family="system-ui,sans-serif"`;
+    const r  = data.redirection   || 0;
+    const rd = data.rently_direct || 0;
+    const w  = Math.max((data.scheduled || 0) - r - rd, 0);
+    const yMax = Math.ceil(Math.max(r, w, rd) / 20) * 20 || 100;
+    const gridLines = 4;
+    const barW = Math.min(chartW * 0.15, 70);
+    const rX  = padL + chartW * 0.20 - barW / 2;
+    const wX  = padL + chartW * 0.50 - barW / 2;
+    const rdX = padL + chartW * 0.80 - barW / 2;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">`;
+    for (let i = 0; i <= gridLines; i++) {
+      const y = padT + chartH - (i / gridLines) * chartH;
+      const v = Math.round((i / gridLines) * yMax);
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="${i===0?'#d1d5db':'#f3f4f6'}" stroke-width="${i===0?1.5:1}"/>`;
+      svg += `<text x="${padL-5}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}</text>`;
+    }
+    const drawBar = (val, color, bx, name) => {
+      const bh = Math.max((val / yMax) * chartH, 2);
+      const by = padT + chartH - bh;
+      const bcx = bx + barW / 2;
+      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW}" height="${bh.toFixed(1)}" rx="6" fill="${color}" opacity="0.9"/>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(by-6).toFixed(1)}" text-anchor="middle" fill="${color}" font-size="12" font-weight="800" ${ff}>${val}</text>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(padT+chartH+16).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="11" font-weight="700" ${ff}>${name}</text>`;
+    };
+    drawBar(r,  '#6366f1', rX,  'Redirection');
+    drawBar(w,  '#0ea5e9', wX,  'Webhook');
+    drawBar(rd, '#10b981', rdX, 'Direct (Rently)');
+    svg += '</svg>';
+    container.innerHTML = svg;
+  }
+
+  // ── Bar tooltip ───────────────────────────────────────────────
+  let _ttCurrentDay = null;
+
+  function _ttShow(e, el) {
+    const tt  = document.getElementById('bar-tooltip');
+    const day = el.getAttribute('data-day');
+    // Collect all bars for the same day across all series in this SVG
+    const svg = el.closest ? el.closest('svg') : el.parentNode;
+    const siblings = svg ? svg.querySelectorAll('[data-day]') : [el];
+    let rows = '';
+    siblings.forEach(b => {
+      if (b.getAttribute('data-day') === day) {
+        const dot = '<span class="tt-dot" style="background:' + b.getAttribute('data-color') + '"></span>';
+        rows += '<div class="tt-row">' + dot + b.getAttribute('data-label') + ': <strong>' + b.getAttribute('data-val') + '</strong></div>';
+      }
+    });
+    tt.innerHTML = '<div class="tt-day">' + day + '</div>' + rows;
+    tt.classList.add('visible');
+    _ttCurrentDay = day;
+    _ttMove(e);
+  }
+
+  function _ttMove(e) {
+    const tt = document.getElementById('bar-tooltip');
+    const x = e.clientX, y = e.clientY;
+    const tw = tt.offsetWidth, th = tt.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    tt.style.left = (x + 14 + tw > vw ? x - tw - 10 : x + 14) + 'px';
+    tt.style.top  = (y + 14 + th > vh ? y - th - 10 : y + 14) + 'px';
+  }
+
+  function _ttHide() {
+    document.getElementById('bar-tooltip').classList.remove('visible');
+    _ttCurrentDay = null;
+  }
+
+  // ── Day range state ───────────────────────────────────────────
+  let _drStart = null, _drEnd = null, _activePreset = 'all';
+
+  // ── Render Cumulative tab ─────────────────────────────────────
+  function renderCumulative() {
+    const slider = document.getElementById('cum-day-slider');
+    const day = slider ? +slider.value : null;
+    const cum = buildCumulative(day);
+    renderKPIsInto('kpi-grid', cum, true);
+    renderRatesInto('rate-grid', cum);
+    renderFunnelInto('funnel-single', cum);
+    renderSourceChartInto('source-chart', cum);
+    const ft = document.getElementById('funnel-tag');
+    if (ft) {
+      ft.className = 'tag tag-cumulative';
+      ft.textContent = day ? 'Day 1\u2013' + day : 'Cumulative';
+    }
+    renderCumCharts(day);
+  }
+
+  function onCumSlider(val) {
+    document.getElementById('cum-day-label').textContent = 'Day ' + val;
+    renderCumulative();
+  }
+
+  // ── Tab switch ───────────────────────────────────────────────
+  function showCohort(cohort, btn) {
+    document.querySelectorAll('.cohort-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const badge = document.getElementById('active-badge');
+    badge.className   = 'tag ' + COHORT_TAG[cohort];
+    badge.textContent = COHORT_LABELS[cohort];
+    _cohort = cohort;
+
+    const sliderBar  = document.getElementById('cum-slider-bar');
+    const selectorBar = document.getElementById('perday-selector-bar');
+    const cc         = document.getElementById('cum-charts');
+
+    if (cohort === 'cumulative') {
+      if (selectorBar) selectorBar.style.display = 'none';
+      if (sliderBar)   sliderBar.style.display = 'flex';
+      const slider = document.getElementById('cum-day-slider');
+      if (slider) {
+        const days = C
+          ? Object.keys(C).map(Number).sort((a, b) => a - b)
+          : (D && D._days ? [...D._days].sort((a, b) => a - b) : []);
+        if (days.length) {
+          slider.min   = days[0];
+          slider.max   = days[days.length - 1];
+          slider.value = days[days.length - 1];
+          document.getElementById('cum-day-label').textContent = 'Day ' + days[days.length - 1];
+        }
+      }
+      renderCumulative();
+      if (cc) cc.style.display = 'flex';
+      return;
+    }
+
+    // Per Day tab
+    if (sliderBar) sliderBar.style.display = 'none';
+    if (cc) cc.style.display = 'none';
+    if (selectorBar) selectorBar.style.display = 'flex';
+    populateDaySelect();
+    renderPerDay();
+  }
+
+  window.addEventListener('resize', () => {
+    if (_cohort === 'cumulative') {
+      renderCumulative();
+      return;
+    }
+    renderPerDay();
+  });
+
+  // ── Tab visibility (no-op now — both tabs always visible) ─────
+  function updateTabVisibility() {}
+
+  // ── Init (called after data is loaded) ───────────────────────
+  function initDashboard() {
+    populateDaySelect();
+    renderPerDay();
+  }
+
+  // ── Load from Google Sheets (triggered by Sync button) ────────
+  async function loadFromSheets() {
+    const btn     = document.getElementById('sync-btn');
+    const spinner = document.getElementById('sync-spinner');
+    const label   = document.getElementById('sync-label');
+    const lastEl  = document.getElementById('last-updated');
+    btn.disabled       = true;
+    btn.style.opacity  = '0.7';
+    spinner.style.display = 'inline-block';
+    label.textContent  = 'Syncing…';
+    try {
+      // Fetch daily + cumulative sheets in parallel
+      const [dailyResp, cumResp] = await Promise.all([
+        fetch(SHEETS_CSV_URL),
+        fetch(CUMULATIVE_CSV_URL),
+      ]);
+      if (!dailyResp.ok) throw new Error('Daily sheet HTTP ' + dailyResp.status);
+      const dailyText = await dailyResp.text();
+      const dailyRows = parseCSV(dailyText);
+      if (!dailyRows.length) throw new Error('Daily sheet is empty');
+      D = buildDataFromCSV(dailyRows);
+
+      // Parse cumulative sheet into C = { dayNum: snap }
+      if (cumResp.ok) {
+        const cumText = await cumResp.text();
+        const cumRows = parseCSV(cumText);
+        const parsed = {};
+        cumRows.forEach(r => {
+          const raw = (r.Day || r.day || '').trim();
+          // Skip summary rows like "1+2"; only accept plain positive integers
+          if (!/^\d+$/.test(raw)) return;
+          const day = +raw;
+          if (day > 0) parsed[day] = rowToSnap(r);
+        });
+        C = Object.keys(parsed).length ? parsed : null;
+      }
+
+      const now = new Date();
+      lastEl.textContent = 'Last synced: ' + now.toLocaleTimeString();
+      lastEl.style.color = '';
+      initDashboard();
+      // Re-render active tab after sync
+      if (_cohort === 'cumulative') {
+        const slider = document.getElementById('cum-day-slider');
+        if (slider) {
+          const days = C
+            ? Object.keys(C).map(Number).sort((a, b) => a - b)
+            : (D && D._days ? [...D._days].sort((a, b) => a - b) : []);
+          if (days.length) {
+            slider.min   = days[0];
+            slider.max   = days[days.length - 1];
+            slider.value = days[days.length - 1];
+            document.getElementById('cum-day-label').textContent = 'Day ' + days[days.length - 1];
+          }
+        }
+        renderCumulative();
+      } else {
+        populateDaySelect();
+        renderPerDay();
+      }
+    } catch (err) {
+      lastEl.textContent = '⚠ Sync failed: ' + err.message;
+      lastEl.style.color = '#dc2626';
+    } finally {
+      btn.disabled       = false;
+      btn.style.opacity  = '1';
+      spinner.style.display = 'none';
+      label.textContent  = '⟳ Sync Data';
+    }
+  }
+</script>
+</body>
+</html>
