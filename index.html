@@ -530,8 +530,8 @@
 
         <!-- Chart 4: Funnel Efficiency — daily -->
         <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
-          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Funnel Efficiency (Daily)</p>
-          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — per-day conversion rates</p>
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Conversion Rate Trend (Daily)</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — new scheduled÷new created &amp; new completed÷new scheduled each day</p>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
             <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled / Created %</span>
             <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#059669;display:inline-block"></span>Completed / Scheduled %</span>
@@ -544,8 +544,8 @@
       <!-- Row 3: Funnel Efficiency (Cumulative) + New Users per Day -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
-          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Funnel Efficiency (Cumulative)</p>
-          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: cumulative sheet — running conversion rates</p>
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Conversion Rate Trend (Cumulative)</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: cumulative sheet — running total scheduled÷created &amp; completed÷scheduled at each day</p>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
             <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block"></span>Scheduled / Created %</span>
             <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#059669;display:inline-block"></span>Completed / Scheduled %</span>
@@ -863,9 +863,11 @@
       const path = s.values.map((v, i) => `${i===0?'M':'L'}${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`).join(' ');
       svg += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       s.values.forEach((v, i) => {
-        svg += `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(v).toFixed(1)}" r="3" fill="${s.color}" stroke="#fff" stroke-width="1.5"/>`;
+        const tipHtml = `<b style="color:${s.color}">${s.label || 'Value'}</b> &mdash; ${labels[i]}<br><b>${v}${suffix}</b>`;
+        const ti = _storeTip(tipHtml);
+        svg += `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(v).toFixed(1)}" r="5" fill="${s.color}" stroke="#fff" stroke-width="1.5" style="cursor:pointer" onmouseenter="tipShow(${ti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"/>`;
         if (n <= 14 && v > 0)
-          svg += `<text x="${xPos(i).toFixed(1)}" y="${(yPos(v)-7).toFixed(1)}" text-anchor="middle" fill="${s.color}" font-size="8" font-weight="700" ${ff}>${v}${suffix}</text>`;
+          svg += `<text x="${xPos(i).toFixed(1)}" y="${(yPos(v)-9).toFixed(1)}" text-anchor="middle" fill="${s.color}" font-size="8" font-weight="700" pointer-events="none" ${ff}>${v}${suffix}</text>`;
       });
     });
     labels.forEach((l, i) => {
@@ -917,19 +919,21 @@
       },
     ], snapDays.map(d => 'D' + d), { H: 160 });
 
-    // Chart 4: Funnel Efficiency Trend — daily (line)
+    // Chart 4: Conversion Rate Trend (Daily) — snapshot values from daily sheet
+    // Each point = scheduled÷created and completed÷scheduled as cumulative totals up to that day
     svgLineChart('cum-efficiency', [
-      { color: '#10b981', values: dailyRows.map(r => r.created   ? +((r.scheduled||0)/r.created*100).toFixed(1)   : 0) },
-      { color: '#059669', values: dailyRows.map(r => r.scheduled ? +((r.completed||0)/r.scheduled*100).toFixed(1) : 0) },
-    ], labels, { H: 160, pct: true });
+      { color: '#10b981', label: 'Sched / Created',   values: snapDays.map(d => { const s = D._snaps[d]||{}; return s.created   ? +((s.scheduled||0)/s.created*100).toFixed(1)   : 0; }) },
+      { color: '#059669', label: 'Completed / Sched', values: snapDays.map(d => { const s = D._snaps[d]||{}; return s.scheduled ? +((s.completed||0)/s.scheduled*100).toFixed(1) : 0; }) },
+    ], snapDays.map(d => 'D' + d), { H: 160, pct: true });
 
-    // Chart 5: Funnel Efficiency — cumulative (from C, running totals)
+    // Chart 5: Conversion Rate Trend (Cumulative) — running totals from cumulative sheet
+    // Shows how the overall rate changes as more days accumulate.
     if (C) {
       const cDays2   = Object.keys(C).map(Number).sort((a, b) => a - b).filter(d => !day || d <= day);
       const cLabels2 = cDays2.map(d => 'D' + d);
       svgLineChart('cum-efficiency-cum', [
-        { color: '#10b981', values: cDays2.map(d => C[d].created   ? +((C[d].scheduled||0)/C[d].created*100).toFixed(1)   : 0) },
-        { color: '#059669', values: cDays2.map(d => C[d].scheduled ? +((C[d].completed||0)/C[d].scheduled*100).toFixed(1) : 0) },
+        { color: '#10b981', label: 'Sched / Created (cumul)',   values: cDays2.map(d => (C[d].created||0)   > 0 ? +((C[d].scheduled||0)/C[d].created*100).toFixed(1)   : 0) },
+        { color: '#059669', label: 'Completed / Sched (cumul)', values: cDays2.map(d => (C[d].scheduled||0) > 0 ? +((C[d].completed||0)/C[d].scheduled*100).toFixed(1) : 0) },
       ], cLabels2, { H: 160, pct: true });
     } else {
       const el = document.getElementById('cum-efficiency-cum');
@@ -1241,15 +1245,14 @@
       const bh  = (val / yMax) * chartH;
       const by  = padT + chartH - bh;
       const bcx = bx + barW / 2;
-      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(bh, 2).toFixed(1)}" rx="4" fill="${color}"/>`;
-      // value above bar
-      svg += `<text x="${bcx.toFixed(1)}" y="${(by - 7).toFixed(1)}" text-anchor="middle" fill="${color}" font-size="13" font-weight="800" ${ff}>${val}</text>`;
-      // % of scheduled
       const sched = D[cohort].scheduled || 1;
       const pct   = ((val / sched) * 100).toFixed(1);
-      svg += `<text x="${bcx.toFixed(1)}" y="${(by - 20).toFixed(1)}" text-anchor="middle" fill="#9ca3af" font-size="9" ${ff}>${pct}% of scheduled</text>`;
-      // label below
-      svg += `<text x="${bcx.toFixed(1)}" y="${(padT + chartH + 16).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="11" font-weight="700" ${ff}>${name}</text>`;
+      const tipHtml = `<b style="color:${color}">${name}</b><br>Count: <b>${val}</b><br><span style="opacity:.7">${pct}% of scheduled</span>`;
+      const ti = _storeTip(tipHtml);
+      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(bh, 2).toFixed(1)}" rx="4" fill="${color}" style="cursor:pointer" onmouseenter="tipShow(${ti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"/>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(by - 7).toFixed(1)}" text-anchor="middle" fill="${color}" font-size="13" font-weight="800" pointer-events="none" ${ff}>${val}</text>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(by - 20).toFixed(1)}" text-anchor="middle" fill="#9ca3af" font-size="9" pointer-events="none" ${ff}>${pct}% of scheduled</text>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(padT + chartH + 16).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="11" font-weight="700" pointer-events="none" ${ff}>${name}</text>`;
     };
 
     drawBar(r,  '#6366f1', rX,  'Redirection');
@@ -1438,13 +1441,17 @@
       svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="${i===0?'#d1d5db':'#f3f4f6'}" stroke-width="${i===0?1.5:1}"/>`;
       svg += `<text x="${padL-5}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}</text>`;
     }
+    const sched = data.scheduled || 1;
     const drawBar = (val, color, bx, name) => {
       const bh = Math.max((val / yMax) * chartH, 2);
       const by = padT + chartH - bh;
       const bcx = bx + barW / 2;
-      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW}" height="${bh.toFixed(1)}" rx="6" fill="${color}" opacity="0.9"/>`;
-      svg += `<text x="${bcx.toFixed(1)}" y="${(by-6).toFixed(1)}" text-anchor="middle" fill="${color}" font-size="12" font-weight="800" ${ff}>${val}</text>`;
-      svg += `<text x="${bcx.toFixed(1)}" y="${(padT+chartH+16).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="11" font-weight="700" ${ff}>${name}</text>`;
+      const pct = ((val / sched) * 100).toFixed(1);
+      const tipHtml = `<b style="color:${color}">${name}</b><br>Count: <b>${val}</b><br><span style="opacity:.7">${pct}% of scheduled</span>`;
+      const ti = _storeTip(tipHtml);
+      svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW}" height="${bh.toFixed(1)}" rx="6" fill="${color}" opacity="0.9" style="cursor:pointer" onmouseenter="tipShow(${ti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"/>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(by-6).toFixed(1)}" text-anchor="middle" fill="${color}" font-size="12" font-weight="800" pointer-events="none" ${ff}>${val}</text>`;
+      svg += `<text x="${bcx.toFixed(1)}" y="${(padT+chartH+16).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="11" font-weight="700" pointer-events="none" ${ff}>${name}</text>`;
     };
     drawBar(r,  '#6366f1', rX,  'Redirection');
     drawBar(w,  '#0ea5e9', wX,  'Webhook');
