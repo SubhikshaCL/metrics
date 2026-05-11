@@ -563,6 +563,29 @@
         </div>
       </div>
 
+      <!-- Prebookings per Lead + User & Drop Trends row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Prebookings per Lead (Per Day)</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Formula: total_prebookings[D] ÷ unique_prospects[D] — running ratio at each day checkpoint</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#6366f1;display:inline-block"></span>Prebookings per Unique User</span>
+          </div>
+          <div id="cum-per-lead"></div>
+        </div>
+        <div style="background:#fff;border-radius:var(--card-r);box-shadow:var(--shadow);padding:14px 16px">
+          <p class="section-label" style="margin-bottom:1px;font-size:0.75rem">Drop-off Breakdown (Per Day)</p>
+          <p style="font-size:0.62rem;color:#9ca3af;margin:0 0 7px">Source: daily sheet — cumulative totals at each day checkpoint; stacked to show total drop-off composition</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#0ea5e9;display:inline-block"></span>Total Prebookings</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#ef4444;display:inline-block"></span>Failed</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#f59e0b;display:inline-block"></span>Cancelled</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#6b7280"><span style="width:8px;height:8px;border-radius:2px;background:#dc2626;display:inline-block"></span>Discarded</span>
+          </div>
+          <div id="cum-users-drops"></div>
+        </div>
+      </div>
+
     </div><!-- #cum-charts -->
 
 
@@ -827,6 +850,77 @@
     el.innerHTML = svg;
   }
 
+  // ── Combo: solid "users" bar + stacked drop-off bars side-by-side per day ──
+  function svgUsersDropoffChart(containerId, usersValues, stackSeries, labels, opts) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const W = el.clientWidth || 600;
+    const H = opts.H || 220;
+    const padL = 44, padR = 12, padT = 16, padB = 32;
+    const chartW = W - padL - padR, chartH = H - padT - padB;
+    const n = labels.length;
+    if (!n) { el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">No data in selected range.</p>'; return; }
+    const stackTotals = labels.map((_, i) => stackSeries.reduce((s, ser) => s + (ser.values[i] || 0), 0));
+    const yMax = Math.ceil(Math.max(...usersValues, ...stackTotals, 1) / 10) * 10 || 10;
+    const ff = 'font-family="system-ui,sans-serif"';
+    const slotW = chartW / n;
+    const grpW  = slotW * 0.82;
+    const barW  = Math.max((grpW - 3) / 2, 3);
+    const r2    = Math.min(4, barW / 2);
+    const every = n <= 10 ? 1 : n <= 20 ? 2 : 5;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">`;
+    // gridlines
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + chartH - (i / 4) * chartH;
+      const v = Math.round((i / 4) * yMax);
+      svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="#f3f4f6" stroke-width="${i===0?1.5:1}"/>`;
+      svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}</text>`;
+    }
+    labels.forEach((lbl, i) => {
+      const groupX = padL + i * slotW + (slotW - grpW) / 2;
+      // Bar 1: total users
+      const uv = usersValues[i] || 0;
+      const ubh = Math.max((uv / yMax) * chartH, 2);
+      const uby = padT + chartH - ubh;
+      const ubx = groupX;
+      const uTip = `<b style="color:#0ea5e9">Total Prebookings</b> — ${lbl}<br><b>${uv.toLocaleString()}</b>`;
+      const uti = _storeTip(uTip);
+      svg += `<path d="M${(ubx+r2).toFixed(1)},${uby.toFixed(1)} Q${ubx.toFixed(1)},${uby.toFixed(1)} ${ubx.toFixed(1)},${(uby+r2).toFixed(1)} L${ubx.toFixed(1)},${(uby+ubh).toFixed(1)} L${(ubx+barW).toFixed(1)},${(uby+ubh).toFixed(1)} L${(ubx+barW).toFixed(1)},${(uby+r2).toFixed(1)} Q${(ubx+barW).toFixed(1)},${uby.toFixed(1)} ${(ubx+barW-r2).toFixed(1)},${uby.toFixed(1)} Z" fill="#0ea5e9" opacity="0.85" style="cursor:pointer" onmouseenter="tipShow(${uti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"/>`;
+      if (n <= 14 && uv > 0) svg += `<text x="${(ubx+barW/2).toFixed(1)}" y="${(uby-3).toFixed(1)}" text-anchor="middle" fill="#0ea5e9" font-size="8" font-weight="700" ${ff}>${uv}</text>`;
+      // Bar 2: stacked drop-offs
+      const sbx = groupX + barW + 3;
+      let curY = padT + chartH;
+      const tot = stackTotals[i];
+      stackSeries.forEach((s, si) => {
+        const v = s.values[i] || 0;
+        if (v <= 0) return;
+        const bh = (v / yMax) * chartH;
+        curY -= bh;
+        const isTop = stackSeries.slice(si + 1).every(ss => (ss.values[i] || 0) === 0);
+        const pct = tot ? ((v / tot) * 100).toFixed(1) : '0';
+        const tipHtml = `<b>${lbl}</b><br><span style="color:${s.color}">&#9632;</span> ${s.label}: <b>${v}</b> <span style="opacity:.65">(${pct}% of ${tot} drop-offs)</span>`;
+        const ti = _storeTip(tipHtml);
+        const evts = `style="cursor:pointer" onmouseenter="tipShow(${ti},event)" onmousemove="tipMove(event)" onmouseleave="tipHide()"`;
+        if (isTop) {
+          svg += `<path d="M${(sbx+r2).toFixed(1)},${curY.toFixed(1)} Q${sbx.toFixed(1)},${curY.toFixed(1)} ${sbx.toFixed(1)},${(curY+r2).toFixed(1)} L${sbx.toFixed(1)},${(curY+bh).toFixed(1)} L${(sbx+barW).toFixed(1)},${(curY+bh).toFixed(1)} L${(sbx+barW).toFixed(1)},${(curY+r2).toFixed(1)} Q${(sbx+barW).toFixed(1)},${curY.toFixed(1)} ${(sbx+barW-r2).toFixed(1)},${curY.toFixed(1)} Z" fill="${s.color}" opacity="0.88" ${evts}/>`;
+        } else {
+          svg += `<rect x="${sbx.toFixed(1)}" y="${curY.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${s.color}" opacity="0.88" ${evts}/>`;
+        }
+      });
+      if (n <= 14 && tot > 0) {
+        const topY = padT + chartH - (tot / yMax) * chartH;
+        svg += `<text x="${(sbx+barW/2).toFixed(1)}" y="${(topY-3).toFixed(1)}" text-anchor="middle" fill="#374151" font-size="8" font-weight="700" ${ff}>${tot}</text>`;
+      }
+    });
+    labels.forEach((l, i) => {
+      if (i % every !== 0 && i !== n - 1) return;
+      const cx = padL + i * slotW + slotW / 2;
+      svg += `<text x="${cx.toFixed(1)}" y="${(padT+chartH+14).toFixed(1)}" text-anchor="middle" fill="#6b7280" font-size="9" font-weight="600" ${ff}>${l}</text>`;
+    });
+    svg += '</svg>';
+    el.innerHTML = svg;
+  }
+
   // ── Generic SVG multi-line chart ──────────────────────────────
   function svgLineChart(containerId, series, labels, opts) {
     const el = document.getElementById(containerId);
@@ -839,8 +933,9 @@
     if (!n) { el.innerHTML = '<p style="padding:16px;color:#9ca3af;font-size:0.8rem">No data in selected range.</p>'; return; }
     const allVals = series.flatMap(s => s.values);
     const rawMax = Math.max(...allVals, 1);
-    const yMax = opts.pct ? Math.min(Math.ceil(rawMax / 5) * 5 + 5, 100)
-                          : (Math.ceil(rawMax / 10) * 10 || 10);
+    const yMax = opts.yMax != null ? opts.yMax
+               : opts.pct ? Math.min(Math.ceil(rawMax / 5) * 5 + 5, 100)
+               : (Math.ceil(rawMax / 10) * 10 || 10);
     const suffix = opts.pct ? '%' : '';
     const ff = 'font-family="system-ui,sans-serif"';
     const hPad = Math.min(20, chartW * 0.05); // horizontal inset so first/last points don't touch axes
@@ -850,7 +945,8 @@
     let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">`;
     for (let i = 0; i <= 4; i++) {
       const y = padT + chartH - (i / 4) * chartH;
-      const v = Math.round((i / 4) * yMax);
+      const raw = (i / 4) * yMax;
+      const v = yMax <= 10 ? +(raw.toFixed(1)).toString().replace(/\.0$/, '') : Math.round(raw);
       svg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL+chartW}" y2="${y.toFixed(1)}" stroke="#f3f4f6" stroke-width="${i===0?1.5:1}"/>`;
       svg += `<text x="${padL-4}" y="${(y+3.5).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="9" ${ff}>${v}${suffix}</text>`;
     }
@@ -945,6 +1041,27 @@
       { color: '#8b5cf6', values: snapDays.map(d => (D._snaps[d] || {}).new_users || 0) },
       { color: '#0ea5e9', values: snapDays.map(d => (D._snaps[d] || {}).users     || 0) },
     ], snapDays.map(d => 'D' + d), { H: 160 });
+
+    // Chart 7: Prebookings per Lead per day
+    // Formula: total_prebookings[D] ÷ unique_prospects[D] (snapshot ratio at each day)
+    // Same formula as the rate card — shows how the overall ratio evolves over time.
+    svgLineChart('cum-per-lead', [
+      {
+        color: '#6366f1', label: 'Prebookings per Unique User',
+        values: snapDays.map(d => {
+          const s = D._snaps[d] || {};
+          return s.users > 0 ? +(s.created / s.users).toFixed(2) : 0;
+        }),
+      },
+    ], snapDays.map(d => 'D' + d), { H: 200, yMax: 3 });
+    svgUsersDropoffChart('cum-users-drops',
+      snapDays.map(d => (D._snaps[d] || {}).created  || 0),
+      [
+        { color: '#ef4444', label: 'Failed',    values: snapDays.map(d => (D._snaps[d] || {}).failed    || 0) },
+        { color: '#f59e0b', label: 'Cancelled', values: snapDays.map(d => (D._snaps[d] || {}).cancelled || 0) },
+        { color: '#dc2626', label: 'Discarded', values: snapDays.map(d => (D._snaps[d] || {}).discarded || 0) },
+      ],
+      snapDays.map(d => 'D' + d), { H: 200 });
   }
 
   const METRICS = [
