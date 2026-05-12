@@ -611,7 +611,7 @@
   // ── Map one CSV row → internal snapshot object ───────────────
   function rowToSnap(r) {
     const n = k => Math.max(parseInt(r[k] || '0', 10) || 0, 0);
-    return {
+    const obj = {
       created:       n('total_prebookings'),
       users:         n('unique_prospects'),
       new_users:     n('new_users'),
