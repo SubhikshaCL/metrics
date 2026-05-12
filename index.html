@@ -117,7 +117,7 @@
     /* ── Card grid ─────────────────────────────────────────── */
     .card-grid {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(8, 1fr);
       gap: 10px;
     }
     @media (max-width: 1100px) { .card-grid { grid-template-columns: repeat(4, 1fr); } }
@@ -188,6 +188,7 @@
     .cc-completed .cc-dot { background: var(--teal-bg);   color: var(--teal); }
     .cc-cancelled .cc-dot { background: var(--amber-bg);  color: var(--amber); }
     .cc-discarded .cc-dot { background: var(--red-bg);    color: var(--red); }
+    .cc-success  .cc-dot { background: #d1fae5;          color: #059669; }
 
     /* ── Rate card ────────────────────────────────────────── */
     .rate-card {
@@ -623,6 +624,8 @@
       redirection:   n('scheduled_via_redirection'),
       rently_direct: n('scheduled_in_rently'),
     };
+    obj.successful = Math.max(obj.created - obj.failed, 0);
+    return obj;
   }
 
   // ── Compute individual-day activity from two cumulative snaps ─
@@ -1018,7 +1021,7 @@
     // Chart 4: Conversion Rate Trend (Daily) — snapshot values from daily sheet
     // Each point = scheduled÷created and completed÷scheduled as cumulative totals up to that day
     svgLineChart('cum-efficiency', [
-      { color: '#10b981', label: 'Sched / Created',   values: snapDays.map(d => { const s = D._snaps[d]||{}; return s.created   ? +((s.scheduled||0)/s.created*100).toFixed(1)   : 0; }) },
+      { color: '#10b981', label: 'Sched / Successful', values: snapDays.map(d => { const s = D._snaps[d]||{}; return s.successful ? +((s.scheduled||0)/s.successful*100).toFixed(1) : 0; }) },
       { color: '#059669', label: 'Completed / Sched', values: snapDays.map(d => { const s = D._snaps[d]||{}; return s.scheduled ? +((s.completed||0)/s.scheduled*100).toFixed(1) : 0; }) },
     ], snapDays.map(d => 'D' + d), { H: 160, pct: true });
 
@@ -1028,7 +1031,7 @@
       const cDays2   = Object.keys(C).map(Number).sort((a, b) => a - b).filter(d => !day || d <= day);
       const cLabels2 = cDays2.map(d => 'D' + d);
       svgLineChart('cum-efficiency-cum', [
-        { color: '#10b981', label: 'Sched / Created (cumul)',   values: cDays2.map(d => (C[d].created||0)   > 0 ? +((C[d].scheduled||0)/C[d].created*100).toFixed(1)   : 0) },
+        { color: '#10b981', label: 'Sched / Successful (cumul)', values: cDays2.map(d => (C[d].successful||0) > 0 ? +((C[d].scheduled||0)/C[d].successful*100).toFixed(1) : 0) },
         { color: '#059669', label: 'Completed / Sched (cumul)', values: cDays2.map(d => (C[d].scheduled||0) > 0 ? +((C[d].completed||0)/C[d].scheduled*100).toFixed(1) : 0) },
       ], cLabels2, { H: 160, pct: true });
     } else {
@@ -1065,7 +1068,8 @@
   }
 
   const METRICS = [
-    { key: 'created',   label: 'Prebookings Created',    cls: 'cc-created',   color: '#6366f1', icon: '📋' },
+    { key: 'created',   label: 'Total Prebookings',      cls: 'cc-created',   color: '#6366f1', icon: '📋' },
+    { key: 'successful', label: 'Successful Prebookings',  cls: 'cc-success',   color: '#059669', icon: '✔️' },
     { key: 'users',     label: 'Unique Users',            cls: 'cc-users',     color: '#0ea5e9', icon: '👤' },
     { key: 'new_users', label: 'New Users',               cls: 'cc-new-users', color: '#8b5cf6', icon: '🆕' },
     { key: 'scheduled', label: 'Converted to Scheduled', cls: 'cc-scheduled', color: '#10b981', icon: '📅' },
@@ -1075,12 +1079,12 @@
   ];
 
   const RATE_METRICS = [
-    { cls: 'rc-sched', label: 'Prebooked → Scheduled', n: d => d.scheduled, den: d => d.created,   sub: 'of prebookings converted to scheduled' },
-    { cls: 'rc-compc', label: 'Prebooked → Completed', n: d => d.completed, den: d => d.created,   sub: 'of prebookings ultimately completed' },
-    { cls: 'rc-comps', label: 'Scheduled → Completed', n: d => d.completed, den: d => d.scheduled, sub: 'of scheduled tours completed' },
-    { cls: 'rc-canc',  label: 'Cancellation Rate',      n: d => d.cancelled, den: d => d.created,   sub: 'of prebookings cancelled', invert: true },
-    { cls: 'rc-disc',  label: 'Discard Rate',            n: d => d.discarded, den: d => d.created,   sub: 'of prebookings discarded', invert: true },
-    { cls: 'rc-ppl',   label: 'Prebookings per Lead',    n: d => d.created,   den: d => d.users,     sub: 'prebookings per unique user', ratio: true },
+    { cls: 'rc-sched', label: 'Prebooked → Scheduled', n: d => d.scheduled,  den: d => d.successful, sub: 'of successful prebookings converted to scheduled' },
+    { cls: 'rc-compc', label: 'Prebooked → Completed', n: d => d.completed,  den: d => d.successful, sub: 'of successful prebookings ultimately completed' },
+    { cls: 'rc-comps', label: 'Scheduled → Completed', n: d => d.completed,  den: d => d.scheduled,  sub: 'of scheduled tours completed' },
+    { cls: 'rc-canc',  label: 'Cancellation Rate',      n: d => d.cancelled,  den: d => d.successful, sub: 'of successful prebookings cancelled', invert: true },
+    { cls: 'rc-disc',  label: 'Discard Rate',            n: d => d.discarded,  den: d => d.successful, sub: 'of successful prebookings discarded', invert: true },
+    { cls: 'rc-ppl',   label: 'Prebookings per Lead',    n: d => d.successful, den: d => d.users,      sub: 'successful prebookings per unique user', ratio: true },
   ];
 
   // ── Helpers ──────────────────────────────────────────────────
@@ -1116,11 +1120,12 @@
 
   function subText(cohort, key) {
     const d = D[cohort];
+    const succ = d.successful || 0;
     if (key === 'new_users')  return `${d.users ? ((d.new_users / d.users) * 100).toFixed(1) : '\u2013'}% of unique users`;
-    if (key === 'scheduled') return `${d.created   ? ((d.scheduled / d.created)   * 100).toFixed(1) : '\u2013'}% of created`;
-    if (key === 'completed') return `${d.created ? ((d.completed / d.created) * 100).toFixed(1) : '\u2013'}% of prebookings`;
-    if (key === 'cancelled') return `${d.created ? ((d.cancelled / d.created) * 100).toFixed(1) : '\u2013'}% of prebookings`;
-    if (key === 'discarded') return `${d.created ? ((d.discarded / d.created) * 100).toFixed(1) : '\u2013'}% of prebookings`;
+    if (key === 'scheduled') return `${succ ? ((d.scheduled / succ) * 100).toFixed(1) : '\u2013'}% of successful`;
+    if (key === 'completed') return `${succ ? ((d.completed / succ) * 100).toFixed(1) : '\u2013'}% of successful`;
+    if (key === 'cancelled') return `${succ ? ((d.cancelled / succ) * 100).toFixed(1) : '\u2013'}% of successful`;
+    if (key === 'discarded') return `${succ ? ((d.discarded / succ) * 100).toFixed(1) : '\u2013'}% of successful`;
     return '&nbsp;';
   }
 
@@ -1201,10 +1206,8 @@
     const bw = val => Math.max((val / d.created) * barMax, 8);
 
     const stageH = 58, connH = 72;
-    const totalH = stageH * 4 + connH * 3;
+    const totalH = stageH * 4 + connH * 3 + 44;
     const ff = `font-family="system-ui,sans-serif"`;
-    const exitW = SIDE - 18;
-    const exitH = 40;
 
     let svg = `<svg viewBox="0 0 ${W} ${totalH}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">`;
 
@@ -1243,14 +1246,9 @@
 
     svg += `<polygon points="${barStart},${c1T} ${barEnd},${c1T} ${(schedX+schedW).toFixed(1)},${c1B} ${schedX.toFixed(1)},${c1B}" fill="#6366f1" opacity="0.12"/>`;
 
-    // Failed total callout — centered in connector 1 area
+    // Side exit boxes (cancelled left, discarded right)
     const failed   = d.failed || 0;
     const failPct  = d.created ? ((failed / d.created) * 100).toFixed(1) : '0';
-    const ftBgW = 300, ftBgH = 28, ftBgX = cx - 150, ftBgY = c1T + 8;
-    svg += `<rect x="${ftBgX.toFixed(1)}" y="${ftBgY.toFixed(1)}" width="${ftBgW}" height="${ftBgH}" rx="4" fill="#fff1f2" stroke="#fca5a5" stroke-width="1"/>`;
-    svg += `<text x="${cx}" y="${(ftBgY + 18.5).toFixed(1)}" text-anchor="middle" fill="#dc2626" font-size="13" font-weight="700" ${ff}>⚠ Failed Prebookings: ${failed.toLocaleString()} (${failPct}% of prebooked)</text>`;
-
-    // Side exit boxes (cancelled left, discarded right)
     const cancPct = d.created ? ((d.cancelled / d.created) * 100).toFixed(1) : '0';
     const discPct = d.created ? ((d.discarded / d.created) * 100).toFixed(1) : '0';
     // funnel edge x at c1Mid (linear interpolation)
@@ -1323,6 +1321,12 @@
     drawStep(compX, compW, s4y, '#059669', 'Completed', `${d.completed.toLocaleString()} · ${cpPct}% of tour started`,
       `<b style="color:#059669">Completed</b><br>Count: <b>${d.completed.toLocaleString()}</b><br>Rate: <b>${cpPct}%</b> of tour started`);
 
+    // Failed Prebookings — bottom right corner
+    const ftBgW2 = Math.min(260, W * 0.42), ftBgH2 = 32, ftBgX2 = W - ftBgW2 - 8, ftBgY2 = totalH - ftBgH2 - 6;
+    svg += `<rect x="${ftBgX2.toFixed(1)}" y="${ftBgY2.toFixed(1)}" width="${ftBgW2}" height="${ftBgH2}" rx="5" fill="#fff1f2" stroke="#fca5a5" stroke-width="1.2"/>`;
+    svg += `<text x="${(ftBgX2 + ftBgW2/2).toFixed(1)}" y="${(ftBgY2 + 13).toFixed(1)}" text-anchor="middle" fill="#dc2626" font-size="10" font-weight="700" ${ff}>⚠ Failed Prebookings</text>`;
+    svg += `<text x="${(ftBgX2 + ftBgW2/2).toFixed(1)}" y="${(ftBgY2 + 26).toFixed(1)}" text-anchor="middle" fill="#b91c1c" font-size="11" font-weight="800" ${ff}>${failed.toLocaleString()} (${failPct}% of total)</text>`;
+
     svg += '</svg>';
     container.innerHTML = svg;
   }
@@ -1384,11 +1388,12 @@
 
   function renderKPIsInto(gridId, data, animate) {
     const _sub = (key) => {
-      if (key === 'new_users')  return data.users    ? ((data.new_users / data.users)   * 100).toFixed(1) + '% of users'       : '';
-      if (key === 'scheduled')  return data.created  ? ((data.scheduled / data.created) * 100).toFixed(1) + '% of created'     : '';
-      if (key === 'completed')  return data.created ? ((data.completed / data.created) * 100).toFixed(1) + '% of prebookings' : '';
-      if (key === 'cancelled')  return data.created  ? ((data.cancelled / data.created) * 100).toFixed(1) + '% of prebookings' : '';
-      if (key === 'discarded')  return data.created  ? ((data.discarded / data.created) * 100).toFixed(1) + '% of prebookings' : '';
+      const succ = data.successful || 0;
+      if (key === 'new_users')  return data.users ? ((data.new_users / data.users) * 100).toFixed(1) + '% of users'       : '';
+      if (key === 'scheduled')  return succ ? ((data.scheduled / succ) * 100).toFixed(1) + '% of successful' : '';
+      if (key === 'completed')  return succ ? ((data.completed  / succ) * 100).toFixed(1) + '% of successful' : '';
+      if (key === 'cancelled')  return succ ? ((data.cancelled  / succ) * 100).toFixed(1) + '% of successful' : '';
+      if (key === 'discarded')  return succ ? ((data.discarded  / succ) * 100).toFixed(1) + '% of successful' : '';
       return '';
     };
     const html = METRICS.map(m => {
@@ -1430,7 +1435,7 @@
     const SIDE = 96, barStart = SIDE, barEnd = W - SIDE, barMax = barEnd - barStart, cx = W / 2;
     const bw = val => Math.max(d.created ? (val / d.created) * barMax : 8, 8);
     const stageH = 58, connH = 72;
-    const totalH = stageH * 4 + connH * 3;
+    const totalH = stageH * 4 + connH * 3 + 44;
     const ff = `font-family="system-ui,sans-serif"`;
     const exitW = SIDE - 18, exitH = 40;
 
@@ -1466,13 +1471,8 @@
     const c1T = s1y+stageH, c1B = c1T+connH, c1Mid = (c1T+c1B)/2;
     svg += `<polygon points="${barStart},${c1T} ${barEnd},${c1T} ${(schedX+schedW).toFixed(1)},${c1B} ${schedX.toFixed(1)},${c1B}" fill="#6366f1" opacity="0.12"/>`;
 
-    // Failed total callout — centered in connector 1 area
     const failed  = d.failed || 0;
     const failPct = d.created ? ((failed/d.created)*100).toFixed(1) : '0';
-    const ftBgW = 300, ftBgH = 28, ftBgX = cx - 150, ftBgY = c1T + 8;
-    svg += `<rect x="${ftBgX.toFixed(1)}" y="${ftBgY.toFixed(1)}" width="${ftBgW}" height="${ftBgH}" rx="4" fill="#fff1f2" stroke="#fca5a5" stroke-width="1"/>`;
-    svg += `<text x="${cx}" y="${(ftBgY+18.5).toFixed(1)}" text-anchor="middle" fill="#dc2626" font-size="13" font-weight="700" ${ff}>⚠ Failed Prebookings: ${failed.toLocaleString()} (${failPct}% of prebooked)</text>`;
-
     const cancPct = d.created ? ((d.cancelled/d.created)*100).toFixed(1) : '0';
     const discPct = d.created ? ((d.discarded/d.created)*100).toFixed(1) : '0';
     const leftEdgeMid  = barStart + (schedX-barStart)*0.5;
@@ -1531,6 +1531,13 @@
     const cpPct = tsVal ? ((d.completed/tsVal)*100).toFixed(1) : '\u2013';
     drawStep(compX, compW, s4y, '#059669', 'Completed', `${(d.completed||0).toLocaleString()} \u00b7 ${cpPct}% of tour started`,
       `<b style="color:#059669">Completed</b><br>Count: <b>${(d.completed||0).toLocaleString()}</b><br>Rate: <b>${cpPct}%</b> of tour started`);
+
+    // Failed Prebookings — bottom right corner
+    const ftBgW2 = Math.min(260, W * 0.42), ftBgH2 = 32, ftBgX2 = W - ftBgW2 - 8, ftBgY2 = totalH - ftBgH2 - 6;
+    svg += `<rect x="${ftBgX2.toFixed(1)}" y="${ftBgY2.toFixed(1)}" width="${ftBgW2}" height="${ftBgH2}" rx="5" fill="#fff1f2" stroke="#fca5a5" stroke-width="1.2"/>`;
+    svg += `<text x="${(ftBgX2 + ftBgW2/2).toFixed(1)}" y="${(ftBgY2 + 13).toFixed(1)}" text-anchor="middle" fill="#dc2626" font-size="10" font-weight="700" ${ff}>⚠ Failed Prebookings</text>`;
+    svg += `<text x="${(ftBgX2 + ftBgW2/2).toFixed(1)}" y="${(ftBgY2 + 26).toFixed(1)}" text-anchor="middle" fill="#b91c1c" font-size="11" font-weight="800" ${ff}>${failed.toLocaleString()} (${failPct}% of total)</text>`;
+
     svg += '</svg>';
     container.innerHTML = svg;
   }
